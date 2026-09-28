@@ -1,8 +1,9 @@
 # Builds RXCapture.exe with the C# compiler that ships with Windows (.NET Framework 4.8).
-# No SDK / Visual Studio required.   Usage:  powershell -ExecutionPolicy Bypass -File build.ps1
+# No SDK / Visual Studio required.   Usage:  powershell -ExecutionPolicy Bypass -File build.ps1 [-OutDir <folder>]   (default: bin)
+param([string]$OutDir)
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
-$out = Join-Path $root 'bin'
+$out = if ($OutDir) { $OutDir } else { Join-Path $root 'bin' }
 New-Item -ItemType Directory -Force $out | Out-Null
 
 $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'

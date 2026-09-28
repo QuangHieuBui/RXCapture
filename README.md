@@ -53,7 +53,11 @@ Menu **Image**: đổi cỡ ảnh, canvas, xoay/lật, trim, viền, đổ bóng
 
 **Xuất**: PNG / JPG / BMP / GIF / TIFF / PDF, sao chép clipboard, in, email (Simple MAPI), mở bằng Paint, mở thư mục. Mọi ảnh chụp tự lưu vào **Library** (khay thumbnail dưới editor) ở dạng có thể sửa tiếp (`.scp`).
 
-**Video**: quay vùng màn hình ra AVI (Motion-JPEG) hoặc GIF động. MP4 (H.264) dùng bộ mã hóa có sẵn của Windows (Media Foundation), không cần cài thêm; `ffmpeg.exe` cạnh `RXCapture.exe` chỉ là dự phòng.
+**Video**: quay vùng màn hình, mặc định ra **MP4 (H.264)** (cài đặt cũ đang để AVI được chuyển sang MP4 một lần khi mở bản mới); có thể chọn AVI (Motion-JPEG) hoặc GIF động. MP4 dùng bộ mã hóa có sẵn của Windows (Media Foundation), không cần cài thêm; `ffmpeg.exe` cạnh `RXCapture.exe` chỉ là dự phòng. Thanh điều khiển khi quay có nút **Record / Pause / Resume**, **Stop & save**, **Discard** kèm tên.
+
+**Khay Library**: rê chuột vào một ảnh/video (hoặc chọn nó) để hiện nút **X** ở góc trên phải — bấm để xóa khỏi thư viện (có hỏi xác nhận). **Chọn nhiều để xóa cùng lúc** (như Explorer): **kéo chuột bôi đen** một khung để chọn các mục nó chạm tới (kéo sát mép trên/dưới thì khay tự cuộn), **Ctrl+bấm** để thêm/bớt từng mục, **Shift+bấm** để chọn cả khoảng từ mục trước, bấm vào chỗ trống để bỏ chọn. Có thể chuột phải một mục > **Select multiple** để hiện ô tích. Khi đang chọn: bấm một mục = chỉ chọn mục đó (bấm đúp để mở), chuột phải > **Select all / Deselect all / Delete selected (N)** / Exit selection mode; phím **Delete** xóa, **Esc** thoát, **Ctrl+A** chọn tất cả.
+
+**Xem, cắt và lưu video trong Editor**: bấm một video trong khay Library để phát ngay trong Editor (Play/Pause, kéo thanh tua, phím Space). Để cắt: đoạn được giữ là **khoảng xanh** trên thanh tua — kéo hai tay nắm ở hai đầu khoảng xanh để chỉnh (khung hình tại tay nắm hiện ngay để canh), hoặc tua tới điểm rồi bấm **Set start** / **Set end**; xong bấm **Trim video** — đoạn đã cắt được lưu thành video MP4 mới trong Library, video gốc giữ nguyên. GIF chỉ xem, không cắt. **Save / Save As** (Ctrl+S, Ctrl+Shift+S, tab File) lưu video đang xem ra tệp bạn chọn, giữ nguyên định dạng (MP4/AVI/GIF).
 
 Giao diện tiếng Anh hoặc tiếng Việt (Settings > General > Language).
 
@@ -64,10 +68,10 @@ Giao diện tiếng Anh hoặc tiếng Việt (Settings > General > Language).
 
 ## Kiểm thử tự động
 ```
-RXCapture.exe --selftest log.txt      # hiệu ứng, tài liệu, xuất file, ghép ảnh cuộn, AVI/GIF, biểu tượng, thư viện
+RXCapture.exe --selftest log.txt      # hiệu ứng, tài liệu, xuất file, ghép ảnh cuộn, AVI/GIF/MP4, cắt video, biểu tượng, thư viện
 RXCapture.exe --interact log.txt      # mô phỏng chuột lên canvas cho mọi công cụ
 RXCapture.exe --overlaytest log.txt   # lớp phủ chọn vùng trên nhiều màn hình
-RXCapture.exe --videotest log.txt     # quay video qua giao diện thật
+RXCapture.exe --videotest log.txt     # quay AVI/GIF/MP4 qua giao diện thật, phát trong Editor, cắt video
 RXCapture.exe --grab x,y,w,h out.png  # chụp một vùng, không giao diện
 ```
 

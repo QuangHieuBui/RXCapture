@@ -547,6 +547,95 @@ namespace RXCapture
     /// <summary>RXCapture.exe --videotest [log]: records ~3 seconds through the real recorder UI in AVI and GIF mode.</summary>
     static class VideoTest
     {
+
+        /// <summary>Trims 1s..2s out of the recording and checks the result is a valid ~1 s MP4 whose first frame matches the source.</summary>
+        static int TrimCheck(LibItem v, string fmt, StringBuilder log)
+        {
+            string dst = Path.Combine(Path.GetTempPath(), "rxcapture_trimtest.mp4");
+            Bitmap first; TimeSpan kept;
+            bool ok = Mp4Writer.Trim(v.File, dst, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), out first, out kept);
+            double secs = 0;
+            if (ok)
+            {
+                var b = File.ReadAllBytes(dst);
+                for (int i = 0; i < b.Length - 24; i++)
+                    if (b[i] == 'm' && b[i + 1] == 'v' && b[i + 2] == 'h' && b[i + 3] == 'd')
+                    {
+                        Func<int, uint> u = o => (uint)(b[o] << 24 | b[o + 1] << 16 | b[o + 2] << 8 | b[o + 3]);
+                        secs = (double)u(i + 20) / u(i + 16); break;
+                    }
+            }
+            int dist = 999;
+            if (ok && first != null)
+                using (var thumb = new Bitmap(v.ThumbFile))
+                {
+                    Color a = thumb.GetPixel(thumb.Width / 2, thumb.Height / 2), c = first.GetPixel(first.Width / 2, first.Height / 2);
+                    dist = Math.Abs(a.R - c.R) + Math.Abs(a.G - c.G) + Math.Abs(a.B - c.B);
+                }
+            if (first != null) first.Dispose();
+            try { File.Delete(dst); } catch { }
+            bool good = ok && secs > 0.8 && secs < 1.3 && dist <= 60;
+            log.AppendLine((good ? "PASS " : "FAIL ") + fmt + " trim 1s-2s -> mp4 of " + secs.ToString("0.00") + "s (ok " + ok + ", first-frame colour diff " + dist + ")");
+            return good ? 0 : 1;
+        }
+
+        /// <summary>Opens the recorded file in the editor's player panel and checks it really plays (duration + a drawn frame).</summary>
+        static int PlaybackCheck(LibItem v, string fmt, StringBuilder log)
+        {
+            var prim = Screen.PrimaryScreen.Bounds;
+            var host = new Form { FormBorderStyle = FormBorderStyle.None, StartPosition = FormStartPosition.Manual, TopMost = true, ShowInTaskbar = false, Bounds = new Rectangle(prim.X + 100, prim.Y + 100, 900, 560) };
+            var player = new VideoPlayerPanel();
+            host.Controls.Add(player);
+            host.Show(); player.Visible = true;
+            player.Open(v.File, v.Ext);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while (sw.ElapsedMilliseconds < 8000 && !player.IsOpened && !player.Failed) { Application.DoEvents(); System.Threading.Thread.Sleep(30); }
+            while (sw.ElapsedMilliseconds < 9000 ) { Application.DoEvents(); System.Threading.Thread.Sleep(30); if (sw.ElapsedMilliseconds > 1500) break; }   // let a frame render
+            int failed = 0;
+            bool opened = player.IsOpened && !player.Failed && player.Duration.TotalSeconds >= 1.5;
+            log.AppendLine((opened ? "PASS " : "FAIL ") + fmt + " plays in the editor player (opened " + player.IsOpened + ", duration " + player.Duration.TotalSeconds.ToString("0.0") + "s)");
+            if (!opened) failed++;
+            // the stage must show the video, not the black background: the centre pixel has to match the first frame (the library thumbnail)
+            int dist = 999; string got = "?", want = "?";
+            try
+            {
+                using (var thumb = new Bitmap(v.ThumbFile))
+                using (var shot = ScreenGrabber.Grab(new Rectangle(host.Left + 450, host.Top + 250, 1, 1)))
+                {
+                    Color a = thumb.GetPixel(thumb.Width / 2, thumb.Height / 2), b = shot.GetPixel(0, 0);
+                    want = a.R + "," + a.G + "," + a.B; got = b.R + "," + b.G + "," + b.B;
+                    dist = Math.Abs(a.R - b.R) + Math.Abs(a.G - b.G) + Math.Abs(a.B - b.B);
+                }
+            }
+            catch { }
+            bool drawn = dist <= 60;
+            log.AppendLine((drawn ? "PASS " : "FAIL ") + fmt + " player draws the video frame (centre " + got + " vs first frame " + want + ")");
+            if (!drawn) failed++;
+            // dragging the grips of the green span on the seek bar changes the kept range
+            {
+                var flg = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                var seekBar = (Control)typeof(VideoPlayerPanel).GetField("seek", flg).GetValue(player);
+                Application.DoEvents();
+                Action<string, int> send = (name, x) =>
+                    typeof(Control).GetMethod(name, flg).Invoke(seekBar, new object[] { new MouseEventArgs(MouseButtons.Left, 1, x, seekBar.Height / 2, 0) });
+                int l = 8, r = seekBar.Width - 8;
+                int x25 = l + (r - l) / 4, x75 = l + (r - l) * 3 / 4;
+                send("OnMouseDown", l); send("OnMouseMove", x25); send("OnMouseUp", x25);          // start grip -> 25 %
+                send("OnMouseDown", r); send("OnMouseMove", x75); send("OnMouseUp", x75);          // end grip   -> 75 %
+                double d = player.Duration.TotalSeconds;
+                double s0 = player.TrimStart.TotalSeconds / d, e0 = player.TrimEnd.TotalSeconds / d;
+                bool gripOk = Math.Abs(s0 - 0.25) < 0.04 && Math.Abs(e0 - 0.75) < 0.04;
+                log.AppendLine((gripOk ? "PASS " : "FAIL ") + fmt + " dragging the green span grips sets the kept range (" + s0.ToString("0.00") + " - " + e0.ToString("0.00") + " of the video)");
+                if (!gripOk) failed++;
+            }
+            player.Stop();
+            bool released = true;
+            try { using (var fs = new FileStream(v.File, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { } } catch { released = false; }
+            log.AppendLine((released ? "PASS " : "FAIL ") + fmt + " player releases the file when stopped");
+            if (!released) failed++;
+            host.Close();
+            return failed;
+        }
         public static int Run(string logPath)
         {
             var log = new System.Text.StringBuilder();
@@ -606,6 +695,7 @@ namespace RXCapture
                     log.AppendLine((ok ? "PASS " : "FAIL ") + "mp4 container has ftyp/moov/avc1 (H.264)");
                     if (!ok) failed++;
                 }
+                if (fmt != "gif") { failed += PlaybackCheck(v, fmt, log); failed += TrimCheck(v, fmt, log); }
                 LibraryStore.Delete(v);
             }
             log.AppendLine(failed == 0 ? "ALL VIDEO TESTS PASSED" : failed + " FAILED");

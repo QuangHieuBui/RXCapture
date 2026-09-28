@@ -40,6 +40,8 @@ namespace RXCapture
         }
 
         public static event EventHandler Changed;
+        /// <summary>Raised just before an item's files are deleted so viewers can release them.</summary>
+        public static event Action<LibItem> Deleting;
         static void Raise() { if (Changed != null) Changed(null, EventArgs.Empty); }
 
         static string NewId()
@@ -135,11 +137,23 @@ namespace RXCapture
 
         public static void Delete(LibItem it)
         {
+            if (Deleting != null) try { Deleting(it); } catch { }
             try
             {
                 foreach (var f in Directory.GetFiles(Dir, it.Id + ".*")) File.Delete(f);
             }
             catch { }
+            Raise();
+        }
+
+        /// <summary>Deletes several items with a single change notification.</summary>
+        public static void DeleteMany(IEnumerable<LibItem> list)
+        {
+            foreach (var it in list)
+            {
+                if (Deleting != null) try { Deleting(it); } catch { }
+                try { foreach (var f in Directory.GetFiles(Dir, it.Id + ".*")) File.Delete(f); } catch { }
+            }
             Raise();
         }
 

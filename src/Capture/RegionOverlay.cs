@@ -56,6 +56,7 @@ namespace RXCapture
         static readonly Color Hi = Color.FromArgb(0, 168, 255);
         readonly Font small = new Font("Segoe UI", 12f, FontStyle.Regular, GraphicsUnit.Pixel);
         readonly Font smallB = new Font("Segoe UI", 12f, FontStyle.Bold, GraphicsUnit.Pixel);
+        readonly Font btnFont = new Font("Segoe UI", 16f, FontStyle.Bold, GraphicsUnit.Pixel);
 
         public RegionOverlay(Bitmap frozen, Rectangle vs, List<WinInfo> tops, OverlayMode mode, CaptureAction? forced)
         {
@@ -429,15 +430,16 @@ namespace RXCapture
             return new Rectangle(x, y, w, h);
         }
 
+        const int BtnW = 132, BtnH = 50, BarPad = 5;
+
         Rectangle ToolbarRect()
         {
             if (st != St.Adjusting && st != St.Moving && st != St.Resizing) return Rectangle.Empty;
-            int w = 4 * 70 + 10, h = 66;
-            int x = sel.X + sel.Width / 2 - w / 2, y = sel.Bottom + 14;
-            if (y + h > ClientSize.Height) y = sel.Y - h - 14;
-            if (y < 0) y = Math.Max(0, sel.Bottom - h - 14);
-            x = Math.Max(4, Math.Min(x, ClientSize.Width - w - 4));
-            return new Rectangle(x, y, w, h);
+            var size = new Size(4 * BtnW + 2 * BarPad, BtnH + 2 * BarPad);
+            // stay inside the monitor's working area: the taskbar is topmost too and would hide the bar (and its labels)
+            var wa = Screen.FromRectangle(new Rectangle(sel.X + vs.X, sel.Y + vs.Y, Math.Max(1, sel.Width), Math.Max(1, sel.Height))).WorkingArea;
+            wa = new Rectangle(wa.X - vs.X, wa.Y - vs.Y, wa.Width, wa.Height);
+            return new Rectangle(RecorderForm.BarLocation(sel, size, wa), size);
         }
 
         Rectangle Dirty()
@@ -577,13 +579,16 @@ namespace RXCapture
             string[] labels = { Loc.T("Image"), Loc.T("Video"), Loc.T("Scroll"), Loc.T("Cancel") };
             for (int i = 0; i < 4; i++)
             {
-                var r = new Rectangle(tr.X + 5 + i * 70, tr.Y + 4, 70, 58);
+                var r = new Rectangle(tr.X + BarPad + i * BtnW, tr.Y + BarPad, BtnW, BtnH);
                 buttons.Add(new Btn { R = r, Id = ids[i] });
-                if (r.Contains(mouse))
-                    using (var p = RoundRect(r, 7)) using (var b = new SolidBrush(Color.FromArgb(70, 255, 255, 255))) g.FillPath(b, p);
-                g.DrawImage(Icons.Get(icons[i], 30, true), r.X + 20, r.Y + 4, 30, 30);
-                using (var sf = new StringFormat { Alignment = StringAlignment.Center })
-                    g.DrawString(labels[i], small, Brushes.White, new RectangleF(r.X, r.Y + 37, r.Width, 18), sf);
+                using (var p = RoundRect(Rectangle.Inflate(r, -3, 0), 8))
+                {
+                    if (r.Contains(mouse)) using (var b = new SolidBrush(Color.FromArgb(80, 255, 255, 255))) g.FillPath(b, p);
+                    else using (var b = new SolidBrush(Color.FromArgb(28, 255, 255, 255))) g.FillPath(b, p);
+                }
+                g.DrawImage(Icons.Get(icons[i], 28, true), r.X + 14, r.Y + (r.Height - 28) / 2, 28, 28);
+                using (var sf = new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center, FormatFlags = StringFormatFlags.NoWrap })
+                    g.DrawString(labels[i], btnFont, Brushes.White, new RectangleF(r.X + 50, r.Y, r.Width - 54, r.Height), sf);
             }
         }
 

@@ -160,6 +160,72 @@ namespace RXCapture
                 return null;
             });
 
+            Check("recorder bar stays inside the working area (full screen, taskbar)", delegate
+            {
+                var size = new Size(624, 62);
+                var work = new Rectangle(0, 0, 1920, 1032);   // 48 px taskbar at the bottom
+                var full = RecorderForm.BarLocation(new Rectangle(0, 0, 1920, 1080), size, work);
+                if (!work.Contains(new Rectangle(full, size))) return "full screen: bar at " + full + " leaves the working area";
+                var small = RecorderForm.BarLocation(new Rectangle(400, 200, 640, 360), size, work);
+                if (small.Y != 572 || !work.Contains(new Rectangle(small, size))) return "region: bar at " + small + ", expected y=572 below the region";
+                var low = RecorderForm.BarLocation(new Rectangle(400, 700, 640, 320), size, work);
+                if (low.Y + size.Height > 700 - 12 + 1 || low.Y < 0) return "low region: bar at " + low + ", expected above the region";
+                return null;
+            });
+
+            Check("MP4 reader: exact duration, every frame, seek, upright picture", delegate
+            {
+                string avi = Path.Combine(tmp, "r.avi"), mp4 = Path.Combine(tmp, "r.mp4");
+                byte[] jpg;
+                using (var b = new Bitmap(320, 180))
+                {
+                    using (var g = Graphics.FromImage(b)) { g.FillRectangle(Brushes.Red, 0, 0, 320, 90); g.FillRectangle(Brushes.Blue, 0, 90, 320, 90); }
+                    using (var ms = new MemoryStream()) { b.Save(ms, System.Drawing.Imaging.ImageFormat.Jpeg); jpg = ms.ToArray(); }
+                }
+                using (var w = new AviWriter(avi, 320, 180, 15)) for (int i = 0; i < 45; i++) w.AddFrame(jpg);
+                if (!Mp4Writer.Convert(avi, mp4, 15)) return "MP4 encoder unavailable on this Windows";
+                using (var rd = new Mp4Writer.Reader(mp4))
+                using (var bmp = new Bitmap(rd.Width, rd.Height, System.Drawing.Imaging.PixelFormat.Format32bppRgb))
+                {
+                    if (Math.Abs(rd.Duration.TotalSeconds - 3.0) > 0.05) return "duration " + rd.Duration.TotalSeconds + "s, expected 3.0";
+                    TimeSpan ts; int n = 0;
+                    if (!rd.ReadFrame(bmp, out ts)) return "no first frame";
+                    Color top = bmp.GetPixel(160, 10), bottom = bmp.GetPixel(160, 170);
+                    if (top.R < 200 || top.B > 60) return "top is not red: " + top;
+                    if (bottom.B < 200 || bottom.R > 60) return "bottom is not blue: " + bottom;
+                    n = 1; while (rd.ReadFrame(bmp, out ts)) n++;
+                    if (n != 45) return "decoded " + n + " frames, expected 45";
+                    rd.Seek(TimeSpan.FromSeconds(2.0));
+                    if (!rd.ReadFrame(bmp, out ts)) return "no frame after seek";
+                    if (ts > TimeSpan.FromSeconds(2.0) + TimeSpan.FromMilliseconds(70)) return "seek to 2.0s landed at " + ts.TotalSeconds;
+                }
+                return null;
+            });
+
+            Check("MP4 convert + trim keep the picture upright", delegate
+            {
+                // top half red, bottom half blue: a flipped or channel-swapped encoder would be caught here
+                string avi = Path.Combine(tmp, "m.avi"), mp4 = Path.Combine(tmp, "m.mp4"), cut = Path.Combine(tmp, "m-cut.mp4");
+                byte[] jpg;
+                using (var b = new Bitmap(320, 180))
+                {
+                    using (var g = Graphics.FromImage(b)) { g.FillRectangle(Brushes.Red, 0, 0, 320, 90); g.FillRectangle(Brushes.Blue, 0, 90, 320, 90); }
+                    using (var ms = new MemoryStream()) { b.Save(ms, System.Drawing.Imaging.ImageFormat.Jpeg); jpg = ms.ToArray(); }
+                }
+                using (var w = new AviWriter(avi, 320, 180, 15)) for (int i = 0; i < 30; i++) w.AddFrame(jpg);
+                if (!Mp4Writer.Convert(avi, mp4, 15)) return "MP4 encoder unavailable on this Windows";
+                Bitmap first; TimeSpan kept;
+                if (!Mp4Writer.Trim(mp4, cut, TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(1.5), out first, out kept)) return "trim failed";
+                using (first)
+                {
+                    Color top = first.GetPixel(160, 10), bottom = first.GetPixel(160, 170);
+                    if (top.R < 200 || top.B > 60) return "first frame top is not red: " + top;
+                    if (bottom.B < 200 || bottom.R > 60) return "first frame bottom is not blue: " + bottom;
+                }
+                if (Math.Abs(kept.TotalSeconds - 1.0) > 0.15) return "kept " + kept.TotalSeconds + "s, expected 1s";
+                return null;
+            });
+
             Check("AVI writer/reader + GIF encoder", delegate
             {
                 string avi = Path.Combine(tmp, "t.avi"), gif = Path.Combine(tmp, "t.gif");
@@ -210,6 +276,149 @@ namespace RXCapture
                 return null;
             });
 
+            Check("library tray: tick several items and delete them together", delegate
+            {
+                var made = new List<LibItem>();
+                try
+                {
+                    for (int k = 0; k < 3; k++) using (var s = Sample(120, 80)) { Document d; made.Add(LibraryStore.AddImage(s, out d)); }
+                    using (var grid = new ThumbGrid { Size = new Size(600, 300) })
+                    {
+                        var h = grid.Handle;
+                        var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                        var t = typeof(ThumbGrid);
+                        var items = (List<LibItem>)t.GetField("items", flags).GetValue(grid);
+                        int[] idx = made.ConvertAll(m => items.FindIndex(x => x.Id == m.Id)).ToArray();
+                        if (Array.IndexOf(idx, -1) >= 0) return "new items not listed";
+                        int a = idx[0], b = idx[1];                            // items are listed newest first; ties in the same second may reorder them
+                        t.GetMethod("SetSelecting", flags).Invoke(grid, new object[] { true });
+                        t.GetMethod("Tick", flags).Invoke(grid, new object[] { a });
+                        t.GetMethod("TickRange", flags).Invoke(grid, new object[] { b });   // Shift+click: everything from the last ticked cell to b
+                        var ticked = (List<LibItem>)t.GetMethod("TickedItems", flags).Invoke(grid, null);
+                        if (!grid.Selecting) return "not in selection mode";
+                        int lo = Math.Min(a, b), hi = Math.Max(a, b);
+                        if (ticked.Count != hi - lo + 1) return "ticked " + ticked.Count + " cells, expected " + (hi - lo + 1);
+                        var ours = made.FindAll(m => { int i = items.FindIndex(x => x.Id == m.Id); return i >= lo && i <= hi; });
+                        int changes = 0; EventHandler ch = (x, y) => changes++;
+                        LibraryStore.Changed += ch;
+                        LibraryStore.DeleteMany(ticked);
+                        LibraryStore.Changed -= ch;
+                        var left = LibraryStore.List();
+                        foreach (var m in made)
+                        {
+                            bool shouldBeGone = ours.Exists(o => o.Id == m.Id);
+                            if (shouldBeGone == left.Exists(x => x.Id == m.Id)) return (shouldBeGone ? "ticked" : "unticked") + " item " + (shouldBeGone ? "still in the library" : "was deleted too");
+                        }
+                        if (changes != 1) return "expected one change notification, got " + changes;
+                    }
+                }
+                finally { foreach (var m in made) LibraryStore.Delete(m); }
+                return null;
+            });
+
+            Check("editor can save a video (Save / Save As are enabled, the file is copied)", delegate
+            {
+                string avi = Path.Combine(tmp, "sv.avi"), dest = Path.Combine(tmp, "saved copy.avi");
+                byte[] jpg;
+                using (var b = new Bitmap(160, 90)) using (var ms = new MemoryStream()) { b.Save(ms, System.Drawing.Imaging.ImageFormat.Jpeg); jpg = ms.ToArray(); }
+                using (var w = new AviWriter(avi, 160, 90, 10)) for (int i = 0; i < 10; i++) w.AddFrame(jpg);
+                LibItem it; using (var fb = new Bitmap(160, 90)) it = LibraryStore.AddVideo(avi, fb, 1);
+                try
+                {
+                    using (var ed = new EditorForm())
+                    {
+                        var h = ed.Handle;
+                        var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                        var can = typeof(EditorForm).GetProperty("CanSave", flags);
+                        if ((bool)can.GetValue(ed, null)) return "Save enabled with nothing open";
+                        ed.ShowVideo(it);
+                        if (!(bool)can.GetValue(ed, null)) return "Save is still disabled while a video is shown";
+                        EditorForm.CopyVideoTo(it, dest);
+                        if (!File.Exists(dest) || new FileInfo(dest).Length != new FileInfo(it.File).Length) return "copied file differs from the video";
+                    }
+                }
+                finally { LibraryStore.Delete(it); try { File.Delete(dest); } catch { } }
+                return null;
+            });
+
+            Check("library tray: rubber-band drag ticks the cells it touches, click on empty space clears", delegate
+            {
+                var made = new List<LibItem>();
+                try
+                {
+                    for (int k = 0; k < 6; k++) using (var s = Sample(120, 80)) { Document d; made.Add(LibraryStore.AddImage(s, out d)); }
+                    using (var grid = new ThumbGrid { Size = new Size(600, 300) })
+                    {
+                        var h = grid.Handle;
+                        var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                        var t = typeof(ThumbGrid);
+                        Action<string, int, int> mouse = (name, x, y) =>
+                            typeof(Control).GetMethod(name, flags).Invoke(grid, new object[] { new MouseEventArgs(MouseButtons.Left, 1, x, y, 0) });
+                        float sc = Theme.Scale(grid);
+                        int cw = (int)(grid.CellW * sc), ch = (int)(grid.CellH * sc);
+                        // drag from the top-left corner across the first 2 columns x 2 rows of cells
+                        int x1 = cw + cw / 2, y1 = ch + ch / 2;
+                        mouse("OnMouseDown", 3, 3); mouse("OnMouseMove", 20, 20); mouse("OnMouseMove", x1, y1); mouse("OnMouseUp", x1, y1);
+                        var items = (List<LibItem>)t.GetField("items", flags).GetValue(grid);
+                        var ticked = (List<LibItem>)t.GetMethod("TickedItems", flags).Invoke(grid, null);
+                        int cols = Math.Max(1, grid.ClientSize.Width / cw);
+                        int expect = 0; for (int i = 0; i < items.Count; i++) if (i % cols < 2 && i / cols < 2) expect++;
+                        if (!grid.Selecting) return "the drag did not start a selection";
+                        if (ticked.Count != expect) return "rubber band ticked " + ticked.Count + " cells, expected " + expect;
+                        // a plain click in selection mode selects only that cell (Explorer rules)
+                        mouse("OnMouseDown", cw + cw / 2, ch / 2 + 20); mouse("OnMouseUp", cw + cw / 2, ch / 2 + 20);
+                        ticked = (List<LibItem>)t.GetMethod("TickedItems", flags).Invoke(grid, null);
+                        if (ticked.Count != 1 || ticked[0].Id != items[1].Id) return "plain click should leave just the clicked cell selected, got " + ticked.Count;
+                        // a click on empty space below the last row leaves selection mode
+                        int emptyY = ch * ((items.Count + cols - 1) / cols) + 10;
+                        if (emptyY < grid.ClientSize.Height) { mouse("OnMouseDown", 5, emptyY); mouse("OnMouseUp", 5, emptyY); if (grid.Selecting) return "clicking empty space did not clear the selection"; }
+                    }
+                }
+                finally { foreach (var m in made) LibraryStore.Delete(m); }
+                return null;
+            });
+
+            Check("video format: old settings holding avi move to mp4 once, later choices stay", delegate
+            {
+                var old = new AppSettings { VideoFormat = "avi", SettingsVersion = 0 };
+                if (!old.ApplyVideoFormatMigration() || old.VideoFormat != "mp4" || old.SettingsVersion != 2) return "avi from an old file was not moved to mp4";
+                old.VideoFormat = "avi";                                     // the user picks AVI on purpose afterwards
+                if (old.ApplyVideoFormatMigration() || old.VideoFormat != "avi") return "a later AVI choice was overwritten";
+                var gif = new AppSettings { VideoFormat = "gif", SettingsVersion = 0 };
+                gif.ApplyVideoFormatMigration();
+                if (gif.VideoFormat != "gif") return "a gif choice was changed";
+                if (new AppSettings().VideoFormat != "mp4") return "the default is not mp4";
+                return null;
+            });
+
+            Check("library tray: X button asks to delete, the thumbnail body opens", delegate
+            {
+                using (var s = Sample(200, 120))
+                {
+                    Document d; var it = LibraryStore.AddImage(s, out d);
+                    try
+                    {
+                        using (var grid = new ThumbGrid { Size = new Size(600, 120) })
+                        {
+                            var h = grid.Handle;   // creates the handle, which loads the items
+                            LibItem removed = null, opened = null;
+                            grid.ItemRemove += x => removed = x;
+                            grid.ItemOpen += x => opened = x;
+                            var up = typeof(Control).GetMethod("OnMouseUp", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                            Action<int, int> click = (x, y) => up.Invoke(grid, new object[] { new MouseEventArgs(MouseButtons.Left, 1, x, y, 0) });
+                            float sc = Theme.Scale(grid);
+                            click((int)(118 * sc), (int)(14 * sc));            // inside the X of the first cell
+                            if (removed == null) return "clicking X did not request a delete";
+                            if (opened != null) return "clicking X also opened the item";
+                            click((int)(60 * sc), (int)(45 * sc));             // middle of the first cell
+                            if (opened == null) return "clicking the thumbnail did not open it";
+                        }
+                    }
+                    finally { LibraryStore.Delete(it); }
+                }
+                return null;
+            });
+
             Check("library store round trip", delegate
             {
                 using (var s = Sample(200, 120))
@@ -241,6 +450,7 @@ namespace RXCapture
             string outPath = args.Length > 2 ? args[2] : "uishot.png";
             Form f = null;
             Action prepare = null;
+            LibItem demoVideo = null;   // removed again after the shot so the user's library stays clean
             switch (what)
             {
                 case "editor":
@@ -308,6 +518,84 @@ namespace RXCapture
                         Application.Run(wf);
                         return 0;
                     }
+                case "recorder":
+                    {
+                        // the recorder bar is excluded from screen capture, so it is rendered with DrawToBitmap
+                        if (App.AppIcon == null) App.AppIcon = SystemIcons.Application;
+                        var rf = new RecorderForm(new Rectangle(300, 300, 640, 360));
+                        var rt = new Timer { Interval = 700 };
+                        rt.Tick += delegate
+                        {
+                            rt.Stop();
+                            try { using (var bmp = new Bitmap(rf.Width, rf.Height)) { rf.DrawToBitmap(bmp, new Rectangle(0, 0, rf.Width, rf.Height)); bmp.Save(outPath, ImageFormat.Png); } }
+                            catch (Exception ex) { File.WriteAllText(outPath + ".err", ex.ToString()); }
+                            rf.Close();
+                        };
+                        rf.Shown += delegate { rt.Start(); };
+                        Application.Run(rf);
+                        return 0;
+                    }
+                case "editorvideo":
+                    {
+                        // an editor showing a freshly made MP4 in the in-editor player
+                        var ed = new EditorForm();
+                        f = ed;
+                        prepare = delegate
+                        {
+                            string avi = Path.Combine(Path.GetTempPath(), "rxcapture_uishot.avi"), mp4 = Path.ChangeExtension(avi, ".mp4");
+                            using (var w = new AviWriter(avi, 640, 360, 15))
+                                for (int i = 0; i < 45; i++)
+                                    using (var b = new Bitmap(640, 360)) using (var g = Graphics.FromImage(b)) using (var ms = new MemoryStream())
+                                    {
+                                        g.Clear(Color.FromArgb(30, 60, 110)); g.FillEllipse(Brushes.Orange, 20 + i * 12, 120, 90, 90);
+                                        g.DrawString("demo video", new Font("Segoe UI", 28f, FontStyle.Bold), Brushes.White, 200, 20);
+                                        b.Save(ms, ImageFormat.Jpeg); w.AddFrame(ms.ToArray());
+                                    }
+                            Mp4Writer.Convert(avi, mp4, 15); File.Delete(avi);
+                            LibItem it; using (var fb = new Bitmap(640, 360)) it = LibraryStore.AddVideo(mp4, fb, 3);
+                            demoVideo = it; Application.DoEvents(); ed.ShowVideo(it);   // DoEvents: let the tray reload so the new item can be selected
+                            if (Array.IndexOf(args, "select") >= 0)
+                            {
+                                // multi-select look: tick the first three cells
+                                var fl = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                                var tray = typeof(EditorForm).GetField("tray", fl).GetValue(ed);
+                                typeof(ThumbGrid).GetMethod("SetSelecting", fl).Invoke(tray, new object[] { true });
+                                for (int k = 0; k < 3; k++) typeof(ThumbGrid).GetMethod("Tick", fl).Invoke(tray, new object[] { k });
+                                if (Array.IndexOf(args, "band") >= 0)
+                                {
+                                    // caught mid rubber-band drag
+                                    var tg = typeof(ThumbGrid);
+                                    tg.GetField("marquee", fl).SetValue(tray, true);
+                                    tg.GetField("downPt", fl).SetValue(tray, new Point(60, 20));
+                                    tg.GetField("curPt", fl).SetValue(tray, new Point(380, 100));
+                                }
+                            }
+                        };
+                        break;
+                    }
+                case "overlay":
+                    {
+                        // full-screen selection on the primary monitor: the button bar must sit above the taskbar
+                        var vs = SystemInformation.VirtualScreen;
+                        var prim = Screen.PrimaryScreen.Bounds;
+                        var frozen = ScreenGrabber.Grab(vs);
+                        var ov = new RegionOverlay(frozen, vs, new List<WinInfo>(), OverlayMode.Region, null);
+                        var t0 = typeof(RegionOverlay);
+                        var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                        t0.GetField("sel", flags).SetValue(ov, new Rectangle(prim.X - vs.X, prim.Y - vs.Y, prim.Width, prim.Height));
+                        var stField = t0.GetField("st", flags); stField.SetValue(ov, Enum.Parse(stField.FieldType, "Adjusting"));
+                        var ot = new Timer { Interval = 800 };
+                        ot.Tick += delegate
+                        {
+                            ot.Stop();
+                            try { using (var b = ScreenGrabber.Grab(prim)) b.Save(outPath, ImageFormat.Png); }
+                            catch (Exception ex) { File.WriteAllText(outPath + ".err", ex.ToString()); }
+                            ov.Close();
+                        };
+                        ov.Shown += delegate { t0.GetMethod("Redraw", flags).Invoke(ov, null); ot.Start(); };
+                        ov.ShowDialog();
+                        return 0;
+                    }
                 case "settings": f = new SettingsForm(); break;
                 case "defaults": f = new DefaultsForm(); break;
                 case "library": f = new LibraryForm(); break;
@@ -333,6 +621,7 @@ namespace RXCapture
             };
             f.Shown += delegate { t.Start(); };
             Application.Run(f);
+            if (demoVideo != null) LibraryStore.Delete(demoVideo);
             return 0;
         }
 

@@ -17,6 +17,7 @@ namespace RXCapture
         readonly Ribbon ribbon = new Ribbon();
         readonly CanvasControl canvas = new CanvasControl();
         readonly ThumbGrid tray = new ThumbGrid();
+        readonly VideoPlayerPanel player = new VideoPlayerPanel();
         readonly Panel grip = new Panel();
         readonly EditorStatus status = new EditorStatus();
         readonly Timer autosave = new Timer { Interval = 15000 };
@@ -57,6 +58,11 @@ namespace RXCapture
             Controls.Add(tray);
             Controls.Add(status);
             Controls.Add(ribbon);
+            Controls.Add(player);
+            Controls.SetChildIndex(player, 0);   // front of the z-order: it docks last and covers the canvas while a video plays
+            player.CloseRequested += CloseVideo;
+            player.TrimRequested += TrimVideo;
+            LibraryStore.Deleting += OnLibraryDeleting;
 
             BuildRibbon();
 
@@ -69,6 +75,8 @@ namespace RXCapture
             status.ZoomRequested += z => canvas.SetZoom(z, null);
             status.FitRequested += () => canvas.ZoomFit(true);
             tray.ItemOpen += OpenLibItem;
+            tray.ItemRemove += RemoveFromTray;
+            tray.ItemsRemove += RemoveManyFromTray;
             autosave.Tick += (s, e) => SaveCurrent();
             autosave.Start();
             ribbon.FileMenu = BuildFileMenu;
@@ -96,6 +104,7 @@ namespace RXCapture
 
         public void OpenNew(LibItem it, Document d)
         {
+            HidePlayer();
             SaveCurrent();
             item = it; doc = d;
             doc.Changed += (s, e) => { UpdateStatus(); ribbon.Invalidate(); };
@@ -112,7 +121,8 @@ namespace RXCapture
         void OpenLibItem(LibItem it)
         {
             if (item != null && it.Id == item.Id) return;
-            if (it.IsVideo) { try { Process.Start(it.File); } catch { } return; }
+            if (it.IsVideo) { ShowVideo(it); return; }
+            HidePlayer();
             try
             {
                 var d = Document.LoadProject(it.File);
@@ -124,6 +134,70 @@ namespace RXCapture
                 UpdateTitle(); ContextChanged(); UpdateStatus(); ribbon.Invalidate();
             }
             catch (Exception ex) { MessageBox.Show(this, ex.Message, "RXCapture"); }
+        }
+
+        // ---- in-editor video playback (replaces the canvas while a video is selected)
+
+        public void ShowVideo(LibItem it)
+        {
+            SaveCurrent();
+            item = it; doc = null;
+            canvas.SetDocument(null);
+            player.Open(it.File, it.Ext);
+            player.Visible = true;
+            player.Focus();
+            UpdateTitle(); UpdateStatus(); ContextChanged(); ribbon.Invalidate();
+            tray.Select(it.Id);
+        }
+
+        /// <summary>Stops the player and shows the canvas again (does not change the current item).</summary>
+        void HidePlayer()
+        {
+            if (!player.Visible) return;
+            player.Stop(); player.Visible = false;
+            if (item != null && item.IsVideo) { item = null; UpdateTitle(); }
+        }
+
+        void CloseVideo()
+        {
+            HidePlayer();
+            var next = LibraryStore.List().FirstOrDefault(i => !i.IsVideo);
+            if (next != null) OpenLibItem(next);
+            else { canvas.SetDocument(null); UpdateTitle(); UpdateStatus(); ribbon.Invalidate(); }
+        }
+
+        /// <summary>Keeps only [start, end] of the video being played and saves it as a new video in the library.</summary>
+        void TrimVideo(TimeSpan start, TimeSpan end)
+        {
+            var src = item;
+            if (src == null || !src.IsVideo) return;
+            player.Pause();
+            string tmp = Path.Combine(Path.GetTempPath(), "rxcapture_trim_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".mp4");
+            Bitmap first = null; TimeSpan kept = TimeSpan.Zero; bool ok = false;
+            var worker = new System.Threading.Thread(() => { ok = Mp4Writer.Trim(src.File, tmp, start, end, out first, out kept); }) { IsBackground = true };
+            using (var wait = new BusyForm(Loc.T("Trimming video…")))
+            {
+                wait.Show(this); worker.Start();
+                while (!worker.Join(30)) Application.DoEvents();
+            }
+            if (!ok || first == null)
+            {
+                try { File.Delete(tmp); } catch { }
+                MessageBox.Show(this, Loc.T("Could not trim this video."), "RXCapture", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            LibItem made;
+            using (first) made = LibraryStore.AddVideo(tmp, first, Math.Max(1, (int)Math.Round(kept.TotalSeconds)));
+            tray.Reload();
+            ShowVideo(made);
+        }
+
+        // the media engine keeps the file open: let go of it before the library deletes it
+        void OnLibraryDeleting(LibItem it)
+        {
+            if (!player.Visible || player.CurrentPath != it.File) return;
+            player.Stop(); player.Visible = false;
+            if (item != null && item.Id == it.Id) { item = null; doc = null; UpdateTitle(); UpdateStatus(); ribbon.Invalidate(); }
         }
 
         public void OpenFile(string path)
@@ -155,7 +229,8 @@ namespace RXCapture
 
         void UpdateTitle()
         {
-            Text = "RXCapture Editor" + (doc != null ? " - [" + doc.Created.ToString("MMM d, yyyy h:mm:ss tt", CultureInfo.CurrentCulture) + "]" : "");
+            DateTime? when = doc != null ? doc.Created : (item != null && item.IsVideo ? (DateTime?)item.Created : null);
+            Text = "RXCapture Editor" + (when != null ? " - [" + when.Value.ToString("MMM d, yyyy h:mm:ss tt", CultureInfo.CurrentCulture) + "]" : "");
         }
 
         void UpdateStatus()
@@ -266,7 +341,7 @@ namespace RXCapture
         {
             // quick access toolbar
             Func<string, string, Action, Func<bool>, RBtn> q = (tip, icon, act, en) => { var b = new RBtn(tip, icon, BtnStyle.Icon, act); b.IsEnabled = en; b.Tip = tip; return b; };
-            ribbon.Qat.Add(q("Save", "save", SaveQuick, () => doc != null));
+            ribbon.Qat.Add(q("Save", "save", SaveQuick, () => CanSave));
             ribbon.Qat.Add(q("Undo", "undo", () => { canvas.CommitEdit(); if (doc != null) doc.Undo(); }, () => doc != null && doc.CanUndo));
             ribbon.Qat.Add(q("Redo", "redo", () => { if (doc != null) doc.Redo(); }, () => doc != null && doc.CanRedo));
 
@@ -784,8 +859,8 @@ namespace RXCapture
             m.Items.Add(Theme.Item("Open Image…", "open", (s, e) => OpenFileDialog()));
             m.Items.Add(Theme.Item("New from clipboard", "paste", (s, e) => PasteAsNew()));
             m.Items.Add(new ToolStripSeparator());
-            var save = Theme.Item("Save", "save", (s, e) => SaveQuick()); save.Enabled = doc != null; m.Items.Add(save);
-            var sas = Theme.Item("Save As…", "save", (s, e) => SaveAs()); sas.Enabled = doc != null; m.Items.Add(sas);
+            var save = Theme.Item("Save", "save", (s, e) => SaveQuick()); save.Enabled = CanSave; m.Items.Add(save);
+            var sas = Theme.Item("Save As…", "save", (s, e) => SaveAs()); sas.Enabled = CanSave; m.Items.Add(sas);
             var pdf = Theme.Item("Export as PDF…", "save", (s, e) => DoPdf()); pdf.Enabled = doc != null; m.Items.Add(pdf);
             var prn = Theme.Item("Print…", "print", (s, e) => DoPrint()); prn.Enabled = doc != null; m.Items.Add(prn);
             m.Items.Add(new ToolStripSeparator());
@@ -821,14 +896,16 @@ namespace RXCapture
             items.Add(new FileEntry("New Capture", "camera", () => App.Capture(CaptureMode.AllInOne)));
             items.Add(new FileEntry("New from Clipboard", "paste", PasteAsNew));
             items.Add(new FileEntry("Open", "open", OpenFileDialog));
-            items.Add(new FileEntry("Save", "save", SaveQuick) { Enabled = has, SepAbove = true });
+            items.Add(new FileEntry("Save", "save", SaveQuick) { Enabled = CanSave, SepAbove = true });
             items.Add(new FileEntry("Save As", "save", null)
             {
-                Enabled = has,
-                Sub = new List<FileEntry> {
-                    new FileEntry("Image file…", "save", SaveAs),
-                    new FileEntry("PDF document…", "save", DoPdf),
-                    new FileEntry("RXCapture project (.scp)…", "library", SaveProjectAs) }
+                Enabled = CanSave,
+                Sub = VideoShown
+                    ? new List<FileEntry> { new FileEntry("Video file…", "save", SaveAs) }
+                    : new List<FileEntry> {
+                        new FileEntry("Image file…", "save", SaveAs),
+                        new FileEntry("PDF document…", "save", DoPdf),
+                        new FileEntry("RXCapture project (.scp)…", "library", SaveProjectAs) }
             });
             items.Add(new FileEntry("Convert Images", "resize", ConvertImages) { SepAbove = true });
             items.Add(new FileEntry("Print", "print", null)
@@ -1029,8 +1106,47 @@ namespace RXCapture
             status.Hint(Loc.T("Image copied to clipboard"));
         }
 
+        /// <summary>A video (not an image document) is what the editor currently shows.</summary>
+        bool VideoShown { get { return doc == null && item != null && item.IsVideo; } }   // HidePlayer clears item when the player closes
+        bool CanSave { get { return doc != null || VideoShown; } }
+
+        /// <summary>Writes the library video to <paramref name="dest"/> (a plain file copy: same format and quality).</summary>
+        internal static void CopyVideoTo(LibItem it, string dest)
+        {
+            if (string.Equals(Path.GetFullPath(dest), Path.GetFullPath(it.File), StringComparison.OrdinalIgnoreCase)) return;   // already there
+            File.Copy(it.File, dest, true);
+        }
+
+        /// <summary>Copies the video that is being shown to a file of the user's choice (same format as the recording).</summary>
+        void SaveVideoAs()
+        {
+            var it = item;
+            if (it == null || !File.Exists(it.File)) return;
+            var cfg = AppSettings.Current;
+            string ext = (it.Ext ?? "mp4").ToLowerInvariant();
+            string label = ext == "mp4" ? "MP4 video" : ext == "avi" ? "AVI video" : ext == "gif" ? "GIF animation" : ext.ToUpperInvariant() + " video";
+            using (var sfd = new SaveFileDialog())
+            {
+                sfd.Filter = label + " (*." + ext + ")|*." + ext;
+                sfd.DefaultExt = ext; sfd.AddExtension = true; sfd.OverwritePrompt = true;
+                Directory.CreateDirectory(cfg.SaveFolder);
+                sfd.InitialDirectory = cfg.SaveFolder;
+                sfd.FileName = Path.GetFileNameWithoutExtension(cfg.NewFileName(ext));
+                if (sfd.ShowDialog(this) != DialogResult.OK) return;
+                try
+                {
+                    string dest = sfd.FileName;
+                    CopyVideoTo(it, dest);
+                    cfg.SaveFolder = Path.GetDirectoryName(dest);
+                    status.Hint(Loc.T("Saved") + ": " + dest);
+                }
+                catch (Exception ex) { MessageBox.Show(this, ex.Message, "RXCapture", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+            }
+        }
+
         void SaveAs()
         {
+            if (VideoShown) { SaveVideoAs(); return; }
             if (doc == null) return;
             canvas.CommitEdit();
             var cfg = AppSettings.Current;
@@ -1064,6 +1180,7 @@ namespace RXCapture
 
         void SaveQuick()
         {
+            if (VideoShown) { SaveVideoAs(); return; }
             if (doc == null) return;
             canvas.CommitEdit();
             if (doc.ExportPath != null && Directory.Exists(Path.GetDirectoryName(doc.ExportPath))) WriteExport(doc.ExportPath);
@@ -1101,6 +1218,25 @@ namespace RXCapture
             if (MessageBox.Show(this, Loc.T("Delete this capture from the library?"), "RXCapture", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
             var old = item; item = null; doc = null;
             LibraryStore.Delete(old);
+            var next = LibraryStore.List().FirstOrDefault(i => !i.IsVideo);
+            if (next != null) OpenLibItem(next);
+            else { canvas.SetDocument(null); UpdateTitle(); UpdateStatus(); ribbon.Invalidate(); }
+        }
+
+        // X button / menu in the library tray: the open item goes through DeleteCurrent so the canvas or player moves on cleanly
+        void RemoveFromTray(LibItem it)
+        {
+            if (item != null && item.Id == it.Id) DeleteCurrent();
+            else if (ThumbGrid.ConfirmDelete(this)) LibraryStore.Delete(it);
+        }
+
+        // several ticked thumbnails deleted at once (the tray has already asked for confirmation)
+        void RemoveManyFromTray(List<LibItem> list)
+        {
+            bool currentGone = item != null && list.Exists(i => i.Id == item.Id);
+            if (currentGone) { player.Stop(); player.Visible = false; item = null; doc = null; }
+            LibraryStore.DeleteMany(list);
+            if (!currentGone) return;
             var next = LibraryStore.List().FirstOrDefault(i => !i.IsVideo);
             if (next != null) OpenLibItem(next);
             else { canvas.SetDocument(null); UpdateTitle(); UpdateStatus(); ribbon.Invalidate(); }

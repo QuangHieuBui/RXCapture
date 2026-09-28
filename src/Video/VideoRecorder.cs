@@ -229,37 +229,54 @@ namespace RXCapture
             StartPosition = FormStartPosition.Manual;
             BackColor = Color.FromArgb(37, 37, 40);
             Font = new Font("Segoe UI", 9.5f);
-            Size = new Size(330, 46);
+            Size = new Size(624, 62);
 
-            btnRec.SetBounds(6, 6, 34, 34); btnStop.SetBounds(44, 6, 34, 34); btnCancel.SetBounds(82, 6, 34, 34);
-            Setup(btnRec, "record", Loc.T("Record / Pause")); Setup(btnStop, "stop", Loc.T("Stop and save")); Setup(btnCancel, "close", Loc.T("Discard"));
+            btnRec.SetBounds(8, 8, 130, 46); btnStop.SetBounds(144, 8, 150, 46); btnCancel.SetBounds(300, 8, 130, 46);
+            Setup(btnRec, "record", Loc.T("Record"), Loc.T("Record / Pause")); Setup(btnStop, "stop", Loc.T("Stop & save"), Loc.T("Stop and save")); Setup(btnCancel, "close", Loc.T("Discard"), Loc.T("Discard"));
             btnStop.Enabled = false;
             btnRec.Click += (s, e) => RecClicked();
             btnStop.Click += (s, e) => StopClicked();
             btnCancel.Click += (s, e) => { cancelled = true; StopWorker(); Close(); };
-            lblTime.SetBounds(124, 0, 200, 46); lblTime.ForeColor = Color.White; lblTime.TextAlign = ContentAlignment.MiddleLeft;
+            lblTime.SetBounds(440, 0, 178, 62); lblTime.ForeColor = Color.White; lblTime.TextAlign = ContentAlignment.MiddleLeft;
             lblTime.Font = new Font("Segoe UI", 11f, FontStyle.Bold);
             lblTime.Text = Loc.T("Ready") + "  " + region.Width + "×" + region.Height;
+            lblTime.MouseDown += (s, e) => { if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); } };   // drag the bar by its label
+            lblTime.Cursor = Cursors.SizeAll;
             Controls.Add(btnRec); Controls.Add(btnStop); Controls.Add(btnCancel); Controls.Add(lblTime);
 
             frame = new FrameForm(region, 3);
-            var mon = Screen.FromRectangle(region).Bounds;
-            int x = region.X + (region.Width - Width) / 2, y = region.Bottom + 12;
-            if (y + Height > mon.Bottom) y = region.Top - Height - 12;
-            if (y < mon.Top) y = region.Bottom - Height - 12;      // hidden from the recording by display affinity
-            x = Math.Max(mon.Left, Math.Min(x, mon.Right - Width));
-            Location = new Point(x, y);
+            Location = BarLocation(region, Size, Screen.FromRectangle(region).WorkingArea);
             ui.Tick += (s, e) => UpdateTime();
             cd.Tick += (s, e) => CountdownTick();
         }
 
-        void Setup(Button b, string icon, string tip)
+        [DllImport("user32.dll")] static extern bool ReleaseCapture();
+        [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
+
+        /// <summary>Where the control bar sits: under the region, else above it, else inside the region at the bottom. It always
+        /// stays inside the working area, so the taskbar (also topmost) can never cover it, e.g. when recording the full screen.</summary>
+        public static Point BarLocation(Rectangle region, Size size, Rectangle workArea)
+        {
+            int x = region.X + (region.Width - size.Width) / 2, y = region.Bottom + 12;
+            if (y + size.Height > workArea.Bottom) y = region.Top - size.Height - 12;
+            if (y < workArea.Top) y = region.Bottom - size.Height - 12;      // hidden from the recording by display affinity
+            y = Math.Max(workArea.Top, Math.Min(y, workArea.Bottom - size.Height));
+            x = Math.Max(workArea.Left, Math.Min(x, workArea.Right - size.Width));
+            return new Point(x, y);
+        }
+
+        void Setup(Button b, string icon, string text, string tip)
         {
             b.FlatStyle = FlatStyle.Flat; b.FlatAppearance.BorderSize = 0; b.BackColor = Color.FromArgb(60, 60, 64);
             b.FlatAppearance.MouseOverBackColor = Color.FromArgb(84, 84, 90);
-            b.Image = Icons.Get(icon, 22, true);
+            b.Font = new Font("Segoe UI", 11f, FontStyle.Bold); b.ForeColor = Color.White; b.UseVisualStyleBackColor = false;
+            b.Image = Icons.Get(icon, 24, true); b.Text = text;
+            b.TextImageRelation = TextImageRelation.ImageBeforeText; b.ImageAlign = ContentAlignment.MiddleCenter; b.TextAlign = ContentAlignment.MiddleCenter;
+            b.Cursor = Cursors.Hand; b.UseMnemonic = false;   // "Stop & save" must not turn & into a shortcut key
             new ToolTip().SetToolTip(b, tip);
         }
+
+        void SetRec(string icon, string text) { btnRec.Image = Icons.Get(icon, 24, true); btnRec.Text = text; }
 
         protected override bool ShowWithoutActivation { get { return false; } }
         protected override void WndProc(ref Message m) { if (m.Msg == Native.WM_DPICHANGED) return; base.WndProc(ref m); }
@@ -284,8 +301,8 @@ namespace RXCapture
                 return;
             }
             paused = !paused;
-            if (paused) { sw.Stop(); btnRec.Image = Icons.Get("record", 22, true); frame.Recording = false; }
-            else { sw.Start(); btnRec.Image = Icons.Get("pause", 22, true); frame.Recording = true; }
+            if (paused) { sw.Stop(); SetRec("record", Loc.T("Resume")); frame.Recording = false; }
+            else { sw.Start(); SetRec("pause", Loc.T("Pause")); frame.Recording = true; }
             frame.Invalidate();
         }
 
@@ -301,7 +318,7 @@ namespace RXCapture
         {
             started = true;
             btnRec.Enabled = true; btnStop.Enabled = true;
-            btnRec.Image = Icons.Get("pause", 22, true);
+            SetRec("pause", Loc.T("Pause"));
             frame.Recording = true; frame.Invalidate();
             aviPath = Path.Combine(Path.GetTempPath(), "rxcapture_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".avi");
             sw.Start();

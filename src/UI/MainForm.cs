@@ -435,7 +435,7 @@ namespace RXCapture
             grid.CellW = 190; grid.CellH = 130;
             grid.ItemOpen += it =>
             {
-                if (it.IsVideo) { try { System.Diagnostics.Process.Start(it.File); } catch { } return; }
+                if (it.IsVideo) { App.Editor.ShowVideo(it); App.ShowEditor(); return; }
                 try
                 {
                     var d = Document.LoadProject(it.File);

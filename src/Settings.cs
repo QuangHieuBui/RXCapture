@@ -44,7 +44,8 @@ namespace RXCapture
 
         public int VideoFps = 15;
         public bool VideoCursor = true;
-        public string VideoFormat = "avi";           // avi | gif | mp4 (H.264 via Windows Media Foundation)
+        public string VideoFormat = "mp4";           // avi | gif | mp4 (H.264 via Windows Media Foundation)
+        public int SettingsVersion = 0;              // bumped by the one-time migrations below (0 = file written by an older build)
         public int GifMaxWidth = 800;
 
         public bool RunAtStartup = false;
@@ -90,7 +91,7 @@ namespace RXCapture
 
         public static AppSettings Current
         {
-            get { if (_cur == null) { _cur = Load(); _cur.EnsurePresets(); _cur.MigrateFileName(); } return _cur; }
+            get { if (_cur == null) { _cur = Load(); _cur.EnsurePresets(); _cur.MigrateFileName(); _cur.MigrateVideoFormat(); } return _cur; }
         }
 
         static AppSettings Load()
@@ -119,6 +120,18 @@ namespace RXCapture
         void MigrateFileName()
         {
             if (string.IsNullOrEmpty(FileNamePattern) || FileNamePattern == "Capture_yyyyMMdd_HHmmss" || FileNamePattern == "'Rndimx'_yyyyMMdd_HHmmss") { FileNamePattern = DefaultFileNamePattern; Save(); }
+        }
+
+        /// <summary>MP4 is the default video format now. Files saved by older builds hold "avi" (the former default), so switch it once.</summary>
+        void MigrateVideoFormat() { if (ApplyVideoFormatMigration()) Save(); }
+
+        /// <summary>The in-memory part of the migration (no file access, so it can be tested). True when something changed.</summary>
+        internal bool ApplyVideoFormatMigration()
+        {
+            if (SettingsVersion >= 2) return false;
+            if (VideoFormat == "avi" || string.IsNullOrEmpty(VideoFormat)) VideoFormat = "mp4";
+            SettingsVersion = 2;
+            return true;
         }
 
         public void EnsurePresets()
