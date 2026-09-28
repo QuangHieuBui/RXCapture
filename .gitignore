@@ -1,0 +1,12 @@
+# build output
+bin/
+obj/
+*.pdb
+*.exe
+*.log
+
+# editor / OS
+.vs/
+*.user
+Thumbs.db
+desktop.ini

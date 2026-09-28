@@ -1,0 +1,186 @@
+using System.Collections.Generic;
+
+namespace ShotCraft
+{
+    /// <summary>Vietnamese UI strings (English text is the key).</summary>
+    public static class Translations
+    {
+        public static Dictionary<string, string> Vi()
+        {
+            var d = new Dictionary<string, string>();
+            Action("File", "Tệp", d); Action("Tools", "Công cụ", d); Action("Image", "Ảnh", d); Action("Share", "Chia sẻ", d); Action("Library", "Thư viện", d);
+            Action("Drawing Tools", "Công cụ vẽ", d); Action("Styles", "Kiểu", d); Action("Properties", "Thuộc tính", d); Action("Text", "Chữ", d);
+            Action("Options", "Tùy chọn", d); Action("Clipboard", "Bộ nhớ tạm", d); Action("Modify", "Chỉnh sửa", d); Action("Effects", "Hiệu ứng", d);
+            Action("Filters", "Bộ lọc", d); Action("Watermark", "Hình mờ", d); Action("Save", "Lưu", d); Action("Copy", "Sao chép", d);
+            Action("Send", "Gửi", d); Action("Files", "Tệp", d); Action("Capture", "Chụp", d);
+            Action("Select", "Chọn", d); Action("Callout", "Chú thích", d); Action("Arrow", "Mũi tên", d); Action("Line", "Đường thẳng", d);
+            Action("Stamp", "Con dấu", d); Action("Shape", "Hình khối", d); Action("Pen", "Bút", d); Action("Fill", "Tô màu", d);
+            Action("Highlight", "Tô sáng", d); Action("Eraser", "Tẩy", d); Action("Blur", "Làm mờ", d); Action("Step", "Bước", d);
+            Action("Magnify", "Phóng to", d); Action("Spotlight", "Tiêu điểm", d); Action("Crop", "Cắt", d); Action("Cut\nOut", "Cắt\nbỏ", d);
+            Action("Outline", "Viền", d); Action("Font", "Phông", d); Action("Size", "Cỡ", d); Action("Colour", "Màu", d); Action("Align", "Căn lề", d);
+            Action("Bold", "Đậm", d); Action("Italic", "Nghiêng", d); Action("Underline", "Gạch chân", d);
+            Action("Copy\nAll", "Sao chép\ntất cả", d); Action("Cut", "Cắt", d); Action("Paste", "Dán", d);
+            Action("Save\nAs", "Lưu\nthành…", d); Action("Save\nAs…", "Lưu\nthành…", d); Action("Save As…", "Lưu thành…", d);
+            Action("Resize Image", "Đổi cỡ ảnh", d); Action("Canvas Size", "Kích thước nền", d); Action("Trim", "Cắt viền", d);
+            Action("Rotate", "Xoay", d); Action("Flip", "Lật", d); Action("Border", "Viền ảnh", d); Action("Shadow", "Đổ bóng", d);
+            Action("Torn\nEdge", "Mép\nrách", d); Action("Rounded corners", "Bo góc", d); Action("Reflection", "Phản chiếu", d);
+            Action("Adjust colours…", "Chỉnh màu…", d); Action("Grayscale", "Đen trắng", d); Action("Invert", "Đảo màu", d); Action("Sepia", "Nâu cổ điển", d);
+            Action("Sharpen", "Làm nét", d); Action("Emboss", "Chạm nổi", d); Action("Edges", "Đường viền", d);
+            Action("Email", "Email", d); Action("Print", "In", d); Action("Open in\nPaint", "Mở bằng\nPaint", d); Action("Show in\nfolder", "Mở thư\nmục", d); Action("Export\nPDF", "Xuất\nPDF", d);
+            Action("All-in-One", "Tất cả trong một", d); Action("Region", "Vùng chọn", d); Action("Window", "Cửa sổ", d); Action("Full\nScreen", "Toàn\nmàn hình", d);
+            Action("Full Screen", "Toàn màn hình", d); Action("Scrolling", "Cuộn trang", d); Action("Video", "Video", d); Action("Freehand", "Vẽ tay", d);
+            Action("Open\nLibrary", "Mở\nthư viện", d); Action("Open\nImage…", "Mở\nảnh…", d); Action("Paste as\nnew image", "Dán thành\nảnh mới", d); Action("Delete", "Xóa", d);
+            Action("Open", "Mở", d); Action("Undo", "Hoàn tác", d); Action("Redo", "Làm lại", d);
+            Action("Open Image…", "Mở ảnh…", d); Action("New from clipboard", "Ảnh mới từ clipboard", d); Action("Export as PDF…", "Xuất PDF…", d); Action("Print…", "In…", d);
+            Action("New capture", "Chụp mới", d); Action("Capture window", "Cửa sổ chụp", d); Action("Settings…", "Cài đặt…", d); Action("About RXCapture", "Giới thiệu RXCapture", d);
+            Action("Close editor", "Đóng trình chỉnh sửa", d); Action("Exit", "Thoát", d); Action("Editor", "Trình chỉnh sửa", d);
+            Action("Copy all to clipboard", "Sao chép toàn bộ ảnh", d); Action("Email…", "Email…", d); Action("Open in Paint", "Mở bằng Paint", d); Action("Show in folder", "Mở thư mục chứa", d);
+            Action("Rotate right 90°", "Xoay phải 90°", d); Action("Rotate left 90°", "Xoay trái 90°", d); Action("Rotate 180°", "Xoay 180°", d);
+            Action("Flip horizontal", "Lật ngang", d); Action("Flip vertical", "Lật dọc", d);
+            Action("Duplicate", "Nhân bản", d); Action("Arrange", "Sắp xếp lớp", d); Action("Bring to front", "Đưa lên trên cùng", d); Action("Bring forward", "Đưa lên một lớp", d);
+            Action("Send backward", "Đưa xuống một lớp", d); Action("Send to back", "Đưa xuống dưới cùng", d);
+            Action("Width", "Độ rộng", d); Action("Line type", "Kiểu nét", d); Action("None", "Không", d); Action("Solid", "Liền", d); Action("Dash", "Nét đứt", d); Action("Dot", "Chấm", d); Action("Dash-dot", "Chấm gạch", d);
+            Action("Opacity", "Độ trong suốt", d); Action("More fonts…", "Thêm phông…", d); Action("Left", "Trái", d); Action("Centre", "Giữa", d); Action("Right", "Phải", d);
+            Action("Head", "Đầu mũi tên", d); Action("Filled arrow", "Mũi tên đặc", d); Action("Arrow on both ends", "Mũi tên hai đầu", d); Action("Open arrow", "Mũi tên hở", d);
+            Action("Rectangle", "Chữ nhật", d); Action("Rounded rectangle", "Chữ nhật bo góc", d); Action("Ellipse", "Elip", d); Action("Circle", "Tròn", d);
+            Action("Mode", "Chế độ", d); Action("Pixelate", "Khảm (pixel)", d); Action("Amount", "Mức độ", d); Action("Low", "Thấp", d); Action("Medium", "Vừa", d); Action("High", "Cao", d); Action("Higher", "Cao hơn", d); Action("Maximum", "Tối đa", d);
+            Action("Lens", "Kính lúp", d); Action("Zoom", "Thu phóng", d); Action("Darkness", "Độ tối", d); Action("Tolerance", "Dung sai", d);
+            Action("From file…", "Từ tệp…", d);
+            Action("Check", "Đúng", d); Action("Cross", "Sai", d); Action("Warning", "Cảnh báo", d); Action("Question", "Hỏi", d); Action("Info", "Thông tin", d); Action("Star", "Ngôi sao", d);
+            Action("Heart", "Trái tim", d); Action("Cursor", "Con trỏ", d); Action("Flag", "Cờ", d); Action("Bulb", "Bóng đèn", d);
+            Action("Crop", "Cắt", d); Action("Cancel", "Hủy", d); Action("OK", "OK", d);
+            Action("No colour", "Không màu", d); Action("More colours…", "Thêm màu…", d);
+            Action("Resize Image", "Đổi cỡ ảnh", d); Action("Unit", "Đơn vị", d); Action("Percent", "Phần trăm", d); Action("Pixels", "Điểm ảnh", d); Action("Height", "Cao", d);
+            Action("Keep aspect ratio", "Giữ tỉ lệ", d); Action("Fill colour", "Màu nền", d); Action("Anchor", "Điểm neo", d);
+            Action("Adjust Colours", "Chỉnh màu", d); Action("Brightness", "Độ sáng", d); Action("Contrast", "Tương phản", d); Action("Saturation", "Độ bão hòa", d); Action("Hue", "Sắc độ", d);
+            Action("Width (px)", "Độ rộng (px)", d); Action("Colour", "Màu", d); Action("Drop Shadow", "Đổ bóng", d); Action("Offset X", "Lệch X", d); Action("Offset Y", "Lệch Y", d);
+            Action("Blur", "Làm mờ", d); Action("Opacity %", "Độ mờ %", d); Action("Torn Edge", "Mép rách", d); Action("Style", "Kiểu", d);
+            Action("Zigzag", "Răng cưa", d); Action("Wave", "Sóng", d); Action("Torn", "Rách", d); Action("Depth (px)", "Độ sâu (px)", d); Action("Tooth size (px)", "Cỡ răng (px)", d);
+            Action("Top", "Trên", d); Action("Bottom", "Dưới", d); Action("Watermark", "Hình mờ", d); Action("Font size (px)", "Cỡ chữ (px)", d);
+            Action("Position", "Vị trí", d); Action("Margin (px)", "Lề (px)", d);
+            Action("Top left", "Trên trái", d); Action("Top centre", "Trên giữa", d); Action("Top right", "Trên phải", d); Action("Middle left", "Giữa trái", d);
+            Action("Middle right", "Giữa phải", d); Action("Bottom left", "Dưới trái", d); Action("Bottom centre", "Dưới giữa", d); Action("Bottom right", "Dưới phải", d);
+            Action("Radius (px)", "Bán kính (px)", d);
+            Action("Image copied to clipboard", "Đã sao chép ảnh vào clipboard", d); Action("Saved", "Đã lưu", d);
+            Action("There is no image on the clipboard.", "Clipboard không có ảnh.", d);
+            Action("Delete this capture from the library?", "Xóa ảnh chụp này khỏi thư viện?", d);
+            Action("No e-mail program is configured (Simple MAPI).", "Chưa cấu hình chương trình email (Simple MAPI).", d);
+            Action("Fit to window", "Vừa cửa sổ", d);
+            Action("Drag across the image: a horizontal drag removes a vertical strip, a vertical drag removes a horizontal strip.",
+                   "Kéo ngang qua ảnh: kéo ngang sẽ cắt bỏ một dải dọc, kéo dọc sẽ cắt bỏ một dải ngang.", d);
+            Action("No captures yet — press Print Screen to take one", "Chưa có ảnh chụp — nhấn Print Screen để chụp", d);
+            Action("Click a window to capture  •  Esc = cancel", "Bấm vào cửa sổ để chụp  •  Esc = hủy", d);
+            Action("Draw a freehand shape  •  Esc = cancel", "Vẽ tay vùng cần chụp  •  Esc = hủy", d);
+            Action("Move the box and click to capture  •  Esc = cancel", "Di chuyển khung và bấm để chụp  •  Esc = hủy", d);
+            Action("Drag to select a region  •  Enter = capture  •  Esc = cancel", "Kéo để chọn vùng  •  Enter = chụp  •  Esc = hủy", d);
+            Action("Click a window/object or drag a region  •  Wheel = parent/child  •  C = copy colour  •  Esc = cancel",
+                   "Bấm vào cửa sổ/đối tượng hoặc kéo chọn vùng  •  Lăn chuột = cha/con  •  C = chép mã màu  •  Esc = hủy", d);
+            Action("Scrolling capture…  press Esc to stop", "Đang chụp cuộn trang…  nhấn Esc để dừng", d);
+            Action("Capture saved to the library", "Đã lưu ảnh chụp vào thư viện", d);
+            Action("Video saved to the library", "Đã lưu video vào thư viện", d);
+            Action("Creating GIF…", "Đang tạo GIF…", d); Action("Converting to MP4…", "Đang chuyển sang MP4…", d);
+            Action("ffmpeg.exe was not found - the video was saved as AVI.", "Không tìm thấy ffmpeg.exe - video được lưu dạng AVI.", d);
+            Action("Record / Pause", "Ghi / Tạm dừng", d); Action("Stop and save", "Dừng và lưu", d); Action("Discard", "Hủy bỏ", d); Action("Ready", "Sẵn sàng", d);
+            Action("Could not register hotkey(s): ", "Không đăng ký được phím tắt: ", d); Action("Change them in Settings > Hotkeys.", "Hãy đổi trong Cài đặt > Phím tắt.", d);
+            Action("A screen capture and image editing tool for Windows.", "Công cụ chụp màn hình và chỉnh sửa ảnh cho Windows.", d);
+            Action("Capture: All-in-One, Region, Window, Full screen, Scrolling, Freehand, Fixed region, Video.", "Chụp: Tất cả trong một, Vùng, Cửa sổ, Toàn màn hình, Cuộn trang, Vẽ tay, Vùng cố định, Video.", d);
+            Action("Edit: arrows, callouts, text, steps, stamps, blur, magnify, spotlight, crop, effects and more.", "Chỉnh sửa: mũi tên, chú thích, chữ, bước, con dấu, làm mờ, phóng to, tiêu điểm, cắt, hiệu ứng...", d);
+            // capture window
+            Action("Select any window, object or region of the screen, then choose to capture an image, a scrolling image or a video.",
+                   "Chọn cửa sổ, đối tượng hoặc vùng bất kỳ trên màn hình, rồi chọn chụp ảnh, chụp cuộn trang hoặc quay video.", d);
+            Action("Capture type", "Kiểu chụp", d); Action("Scrolling window", "Cửa sổ cuộn", d); Action("Fixed region", "Vùng cố định", d); Action("Repeat last region", "Lặp lại vùng trước", d);
+            Action("Fixed region size is set in Settings > Capture.", "Kích thước vùng cố định đặt trong Cài đặt > Chụp.", d);
+            Action("Format", "Định dạng", d); Action("Frames per second", "Số khung hình/giây", d); Action("Record the mouse cursor", "Ghi cả con trỏ chuột", d);
+            Action("Output", "Đầu ra", d); Action("Open in Editor", "Mở trong trình chỉnh sửa", d); Action("Copy to clipboard", "Sao chép vào clipboard", d);
+            Action("Save automatically to the folder in Settings", "Tự động lưu vào thư mục trong Cài đặt", d);
+            Action("Delay", "Hẹn giờ", d); Action("Off", "Tắt", d); Action("Include the mouse cursor", "Gồm cả con trỏ chuột", d); Action("or press", "hoặc nhấn", d);
+            Action("None", "Không", d); Action("Drop shadow", "Đổ bóng", d); Action("Torn edge", "Mép rách", d);
+            Action("Settings", "Cài đặt", d); Action("General", "Chung", d); Action("Hotkeys", "Phím tắt", d);
+            Action("Language", "Ngôn ngữ", d); Action("Automatic", "Tự động", d);
+            Action("Start RXCapture when Windows starts", "Chạy RXCapture cùng Windows", d); Action("Show the tray icon", "Hiện biểu tượng ở khay hệ thống", d);
+            Action("Keep running in the tray when windows are closed", "Vẫn chạy ở khay hệ thống khi đóng cửa sổ", d);
+            Action("Maximum captures kept in the library", "Số ảnh tối đa giữ trong thư viện", d);
+            Action("Include the mouse cursor in image captures", "Gồm con trỏ chuột trong ảnh chụp", d); Action("Delay before capture (seconds)", "Hẹn giờ trước khi chụp (giây)", d);
+            Action("Show the magnifier while selecting", "Hiện kính lúp khi chọn vùng", d);
+            Action("Capture immediately after selecting (skip the confirm toolbar)", "Chụp ngay sau khi chọn (bỏ thanh xác nhận)", d);
+            Action("Full screen capture covers all monitors", "Chụp toàn màn hình gồm mọi màn hình", d);
+            Action("Fixed region width (px)", "Chiều rộng vùng cố định (px)", d); Action("Fixed region height (px)", "Chiều cao vùng cố định (px)", d);
+            Action("Play a sound after capture", "Phát âm thanh sau khi chụp", d);
+            Action("Open captures in the Editor", "Mở ảnh chụp trong trình chỉnh sửa", d); Action("Copy captures to the clipboard", "Sao chép ảnh chụp vào clipboard", d);
+            Action("Save captures automatically to the folder below", "Tự động lưu ảnh chụp vào thư mục bên dưới", d);
+            Action("Save folder", "Thư mục lưu", d); Action("File format", "Định dạng tệp", d); Action("JPEG quality", "Chất lượng JPEG", d);
+            Action("File name pattern (date format)", "Mẫu tên tệp (định dạng ngày)", d); Action("Effect applied to new captures", "Hiệu ứng áp dụng cho ảnh mới", d);
+            Action("Repeat last region", "Lặp lại vùng trước", d);
+            Action("Click a box and press the new combination. Backspace clears it.", "Bấm vào ô rồi nhấn tổ hợp phím mới. Backspace để xóa.", d);
+            Action("Frames per second", "Số khung hình/giây", d); Action("Output format", "Định dạng đầu ra", d); Action("GIF maximum width (px)", "Độ rộng GIF tối đa (px)", d);
+            Action("Tip: put ffmpeg.exe next to RXCapture.exe to enable MP4 (H.264) output.", "Mẹo: đặt ffmpeg.exe cạnh RXCapture.exe để xuất MP4 (H.264).", d);
+            Action("Copy image", "Sao chép ảnh", d); Action("Play video", "Phát video", d); Action("Show in folder", "Mở thư mục chứa", d);
+            Action("Image copied to clipboard", "Đã sao chép ảnh vào clipboard", d);
+            Action("Scroll", "Cuộn", d);
+            Action("Presets", "Cấu hình", d); Action("Selection", "Vùng chọn", d); Action("Timer", "Hẹn giờ", d);
+            Action("Open in Editor", "Mở trong trình chỉnh sửa", d); Action("Save to file", "Lưu ra tệp", d); Action("Editor + Clipboard", "Trình chỉnh sửa + Clipboard", d);
+            Action("Clipboard", "Clipboard", d); Action("File", "Tệp", d);
+            Action("Add a shadow around the window", "Thêm bóng đổ quanh cửa sổ", d);
+            Action("Transparent rounded corners (Windows 11)", "Bo góc trong suốt (Windows 11)", d);
+            Action("Capture the whole window even if covered", "Chụp đủ cửa sổ dù bị che khuất", d);
+            Action("Window capture: add a shadow around the window", "Chụp cửa sổ: thêm bóng đổ quanh cửa sổ", d);
+            Action("Window capture: transparent rounded corners (Windows 11)", "Chụp cửa sổ: bo góc trong suốt (Windows 11)", d);
+            Action("Window capture: whole window even if covered by others", "Chụp cửa sổ: chụp đủ cửa sổ dù bị che", d);
+            Action("Drag to select any area of the screen.", "Kéo để chọn một vùng bất kỳ trên màn hình.", d);
+            Action("Captures the whole monitor under the mouse (all monitors can be enabled in Settings > Capture).", "Chụp toàn bộ màn hình đang chứa con trỏ (bật chụp mọi màn hình trong Cài đặt > Chụp).", d);
+            Action("Select a scrollable area; the page is scrolled automatically and stitched into one tall image. Press Esc to stop.", "Chọn vùng cuộn được; trang tự cuộn và được ghép thành một ảnh dài. Nhấn Esc để dừng.", d);
+            Action("Draw any shape; everything outside it becomes transparent.", "Vẽ hình bất kỳ; phần bên ngoài sẽ trong suốt.", d);
+            Action("Repeats the last captured region without asking.", "Chụp lại vùng vừa chụp mà không hỏi.", d);
+            Action("Tip: while selecting, roll the mouse wheel to choose a parent or child object; press C to copy the colour under the cursor.", "Mẹo: khi chọn, lăn chuột để chọn đối tượng cha/con; nhấn C để chép mã màu dưới con trỏ.", d);
+            Action("Capture with preset", "Chụp theo cấu hình", d); Action("Save current…", "Lưu hiện tại…", d); Action("Rename…", "Đổi tên…", d); Action("Hotkey…", "Phím tắt…", d);
+            Action("Save preset", "Lưu cấu hình", d); Action("Rename preset", "Đổi tên cấu hình", d); Action("Preset hotkey", "Phím tắt cấu hình", d);
+            Action("Preset name", "Tên cấu hình", d); Action("Hotkey", "Phím tắt", d); Action("Delete this preset?", "Xóa cấu hình này?", d);
+            Action("Video (window)", "Video (cửa sổ)", d); Action("Video (screen)", "Video (màn hình)", d);
+            Action("Image Profiles", "Cấu hình ảnh", d); Action("Scrolling Profiles", "Cấu hình chụp cuộn", d); Action("Video Profiles", "Cấu hình video", d); Action("My Presets", "Cấu hình của tôi", d);
+            Action("Manage Profiles", "Quản lý cấu hình", d); Action("Video (region)", "Video (vùng)", d); Action("Scrolling window", "Cuộn cửa sổ", d);
+            Action("Capture widget", "Thanh Capture", d); Action("Hide capture widget", "Ẩn thanh Capture", d); Action("Auto-hide", "Tự thu gọn", d);
+            Action("Show the capture widget at the top of the screen", "Hiện thanh Capture ở mép trên màn hình", d);
+            Action("No presets yet. Use Manage Profiles to save one.", "Chưa có cấu hình. Dùng Quản lý cấu hình để lưu.", d);
+            Action("Open the editor", "Mở trình chỉnh sửa", d); Action("Menu", "Menu", d); Action("Show / hide the profile list", "Hiện / ẩn danh sách cấu hình", d);
+            Action("Drag to move along the top edge", "Kéo để di chuyển dọc mép trên", d); Action("Stop recording", "Dừng quay", d);
+            Action("New Image", "Ảnh mới", d); Action("New Capture", "Chụp mới", d); Action("New from Clipboard", "Mới từ Clipboard", d);
+            Action("Save As", "Lưu thành", d); Action("Convert Images", "Chuyển đổi ảnh", d); Action("Help", "Trợ giúp", d);
+            Action("Recent Files", "Tệp gần đây", d); Action("No recent files", "Chưa có tệp gần đây", d);
+            Action("Editor Options…", "Tùy chọn trình chỉnh sửa…", d); Action("Exit Editor", "Thoát trình chỉnh sửa", d);
+            Action("Image file…", "Tệp ảnh…", d); Action("PDF document…", "Tài liệu PDF…", d); Action("RXCapture project (.scp)…", "Dự án RXCapture (.scp)…", d);
+            Action("Print to PDF…", "In ra PDF…", d); Action("Keyboard shortcuts", "Phím tắt", d); Action("Open data folder", "Mở thư mục dữ liệu", d);
+            Action("Copy / Cut / Paste", "Sao chép / Cắt / Dán", d); Action("Undo / Redo", "Hoàn tác / Làm lại", d); Action("Select all", "Chọn tất cả", d);
+            Action("Region / Window / Full Screen / Scrolling / Freehand / Repeat / Video", "Vùng / Cửa sổ / Toàn màn hình / Cuộn / Vẽ tay / Lặp lại / Video", d);
+            Action("Background", "Nền", d); Action("Custom", "Tùy chọn", d);
+            Action("Edit value…", "Sửa giá trị…", d); Action("Restart sequence", "Đặt lại từ 1", d); Action("Edit step value…", "Sửa giá trị bước…", d); Action("Edit step value", "Sửa giá trị bước", d);
+            Action("Restart sequence here", "Bắt đầu lại từ bước này", d); Action("Value", "Giá trị", d); Action("Renumber the steps that follow", "Đánh số lại các bước phía sau", d);
+            Action("New steps start at", "Bước mới có cỡ", d); Action("Step value set to", "Đã đặt giá trị bước thành", d); Action("Sequence restarted at this step", "Đã bắt đầu lại dãy số từ bước này", d);
+            Action("The next step you add will be 1", "Bước tiếp theo bạn thêm sẽ là 1", d); Action("Default size (px)", "Cỡ mặc định (px)", d);
+            Action("Put fixed text in single quotes, e.g. 'Rndimsx'_yyyyMMdd_HHmmss. Without quotes, letters such as d, m or t are read as date codes.", "Đặt phần chữ cố định trong dấu nháy đơn, ví dụ 'Rndimsx'_yyyyMMdd_HHmmss. Nếu không có nháy, các chữ như d, m, t sẽ bị hiểu là mã ngày giờ.", d);
+            Action("Set default", "Đặt mặc định", d); Action("Defaults…", "Mặc định…", d); Action("Saved as the default for", "Đã lưu làm mặc định cho", d);
+            Action("Default tool properties", "Thông số mặc định của công cụ", d); Action("Default tool properties…", "Thông số mặc định của công cụ…", d);
+            Action("Default properties", "Thông số mặc định", d); Action("Edit…", "Sửa…", d); Action("Reset", "Đặt lại", d); Action("Reset all", "Đặt lại tất cả", d);
+            Action("Choose a tool and set the properties new objects start with. Objects already drawn are not changed.", "Chọn công cụ và đặt thông số cho đối tượng mới. Đối tượng đã vẽ không bị thay đổi.", d);
+            Action("Put every tool back to its built-in default?", "Đặt lại mọi công cụ về mặc định gốc?", d);
+            Action("Outline colour", "Màu viền", d); Action("Fill colour", "Màu nền", d); Action("Outline width (px)", "Độ dày viền (px)", d); Action("Line type", "Kiểu nét", d);
+            Action("Solid", "Liền", d); Action("Dash", "Nét đứt", d); Action("Dot", "Chấm", d); Action("Dash-dot", "Đứt-chấm", d);
+            Action("Head", "Đầu mũi tên", d); Action("Filled arrow", "Mũi tên đặc", d); Action("Arrow on both ends", "Mũi tên hai đầu", d); Action("Open arrow", "Mũi tên rỗng", d);
+            Action("Shape", "Hình", d); Action("Rectangle", "Chữ nhật", d); Action("Rounded rectangle", "Chữ nhật bo góc", d); Action("Ellipse", "Elip", d); Action("Lens", "Kính lúp", d); Action("Circle", "Tròn", d);
+            Action("Opacity (%)", "Độ trong suốt (%)", d); Action("Drop shadow", "Đổ bóng", d); Action("shadow", "đổ bóng", d);
+            Action("Font", "Phông chữ", d); Action("Font size (px)", "Cỡ chữ (px)", d); Action("Text colour", "Màu chữ", d); Action("Bold", "Đậm", d); Action("Italic", "Nghiêng", d); Action("Underline", "Gạch chân", d);
+            Action("Align", "Căn lề", d); Action("Left", "Trái", d); Action("Centre", "Giữa", d); Action("Right", "Phải", d);
+            Action("Arrow", "Mũi tên", d); Action("Line", "Đường thẳng", d); Action("Callout", "Chú thích", d); Action("Step", "Bước", d); Action("Pen", "Bút", d); Action("Highlighter", "Bút dạ", d); Action("Magnify", "Phóng đại", d);
+            Action("Editor", "Trình chỉnh sửa", d); Action("Open the editor maximized (full screen)", "Mở trình chỉnh sửa toàn màn hình", d);
+            Action("Set the colours, width, font and effects that new objects of each drawing tool start with. In the editor, Set default (Tools > Properties) stores the selected object's style.", "Đặt màu, độ dày, phông chữ và hiệu ứng mà đối tượng mới của từng công cụ vẽ bắt đầu với. Trong trình chỉnh sửa, nút Đặt mặc định (Tools > Properties) lưu kiểu của đối tượng đang chọn.", d);
+            Action("Images to convert", "Ảnh cần chuyển đổi", d); Action("Add…", "Thêm…", d); Action("Remove", "Xóa", d); Action("Clear", "Xóa hết", d);
+            Action("Convert to", "Chuyển sang", d); Action("JPEG quality", "Chất lượng JPEG", d); Action("Save to", "Lưu vào", d); Action("Convert", "Chuyển đổi", d);
+            Action("Same folder as the source image", "Cùng thư mục với ảnh gốc", d); Action("Folder:", "Thư mục:", d);
+            Action("Add images or drop files here.", "Thêm ảnh hoặc kéo thả tệp vào đây.", d); Action("file(s)", "tệp", d); Action("Converted", "Đã chuyển đổi", d); Action("failed", "lỗi", d);
+            Action("Image to Editor", "Ảnh → Trình chỉnh sửa", d); Action("Region to Clipboard", "Vùng → Clipboard", d); Action("Window to Editor", "Cửa sổ → Trình chỉnh sửa", d);
+            Action("Full screen to File", "Toàn màn hình → Tệp", d); Action("Scrolling to Editor", "Cuộn trang → Trình chỉnh sửa", d);
+            return d;
+        }
+
+        static void Action(string en, string vi, Dictionary<string, string> d) { d[en] = vi; }
+    }
+}
