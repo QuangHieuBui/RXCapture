@@ -4,7 +4,7 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace ShotCraft
+namespace RXCapture
 {
     [StructLayout(LayoutKind.Sequential)]
     public struct RECT

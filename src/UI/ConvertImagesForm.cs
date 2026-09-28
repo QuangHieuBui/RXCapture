@@ -4,7 +4,7 @@ using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>File > Convert Images: converts a batch of images (or .scp projects) to PNG / JPEG / BMP / GIF / TIFF / PDF.</summary>
     public class ConvertImagesForm : DarkForm

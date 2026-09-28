@@ -9,7 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>The image editor window, laid out like the Snagit 12 editor (dark ribbon, canvas, library tray, status bar).</summary>
     public class EditorForm : Form

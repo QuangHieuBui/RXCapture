@@ -7,7 +7,7 @@ using System.Threading;
 using Timer = System.Windows.Forms.Timer;
 using System.Windows.Forms;
 
-namespace ShotCraft
+namespace RXCapture
 {
     public enum CaptureMode { AllInOne, Region, Window, FullScreen, Freehand, Fixed, Scrolling, Video, Repeat, VideoWindow, VideoScreen }
 

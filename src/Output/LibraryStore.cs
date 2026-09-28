@@ -7,7 +7,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 
-namespace ShotCraft
+namespace RXCapture
 {
     public class LibItem
     {

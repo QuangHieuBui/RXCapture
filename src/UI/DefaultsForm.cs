@@ -5,7 +5,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.Windows.Forms;
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>
     /// "Default tool properties": pick a drawing tool, edit the colours / width / font / effects it starts with

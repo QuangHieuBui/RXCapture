@@ -6,7 +6,7 @@ using System.Drawing.Imaging;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>
     /// Scrolling capture: repeatedly scrolls the content under a region with the mouse wheel, grabs each

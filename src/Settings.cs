@@ -6,7 +6,7 @@ using System.IO;
 using System.Windows.Forms;
 using System.Xml.Serialization;
 
-namespace ShotCraft
+namespace RXCapture
 {
     public enum AfterEffect { None, Border, DropShadow, TornEdge }
 

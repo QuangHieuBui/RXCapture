@@ -7,7 +7,7 @@ using System.IO;
 using System.Text;
 using System.Windows.Forms;
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>Automated checks of the non-interactive parts (run:  RXCapture.exe --selftest [logfile]).</summary>
     static class SelfTest
@@ -46,7 +46,7 @@ namespace ShotCraft
 
         public static int Run(string logPath)
         {
-            string tmp = Path.Combine(Path.GetTempPath(), "shotcraft_selftest");
+            string tmp = Path.Combine(Path.GetTempPath(), "rxcapture_selftest");
             Directory.CreateDirectory(tmp);
 
             Check("screen grab is opaque and sized", delegate

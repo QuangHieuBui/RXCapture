@@ -8,7 +8,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>Drives the canvas with synthetic mouse messages (RXCapture.exe --interact [log]) to verify every tool.</summary>
     static class InteractTest
@@ -455,7 +455,7 @@ namespace ShotCraft
             c.ZoomFit(false);
 
             // export roundtrip of the edited document
-            string p = Path.Combine(Path.GetTempPath(), "shotcraft_interact.png");
+            string p = Path.Combine(Path.GetTempPath(), "rxcapture_interact.png");
             using (var b = d.Render()) Exporter.Save(b, p);
             Expect("export edited image", new FileInfo(p).Length > 1000);
             c.CurrentTool = Tool.Select;
@@ -463,7 +463,7 @@ namespace ShotCraft
     }
 }
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>RXCapture.exe --overlaytest [log]: drives the region overlay with synthetic input on the real multi-monitor desktop.</summary>
     static class OverlayTest
@@ -542,7 +542,7 @@ namespace ShotCraft
     }
 }
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>RXCapture.exe --videotest [log]: records ~3 seconds through the real recorder UI in AVI and GIF mode.</summary>
     static class VideoTest
@@ -600,7 +600,7 @@ namespace ShotCraft
     }
 }
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>RXCapture.exe --scrolltest file.png x,y,w,h : scroll-captures the given screen region.</summary>
     static class ScrollTest
@@ -620,7 +620,7 @@ namespace ShotCraft
     }
 }
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>RXCapture.exe --windowtest [log]: captures a window that is partly covered by another one (PrintWindow path).</summary>
     static class WindowTest

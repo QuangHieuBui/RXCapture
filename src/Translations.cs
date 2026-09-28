@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>Vietnamese UI strings (English text is the key).</summary>
     public static class Translations

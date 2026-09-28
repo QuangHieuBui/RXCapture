@@ -5,7 +5,7 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>Animated GIF89a encoder with per-frame median-cut palettes and duplicate-frame merging.</summary>
     public class GifWriter : IDisposable

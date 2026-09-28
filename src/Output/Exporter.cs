@@ -9,7 +9,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>Saving, clipboard, printing, e-mail and "open with" helpers.</summary>
     public static class Exporter

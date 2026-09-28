@@ -6,7 +6,7 @@ using System.Drawing.Text;
 using System.Windows.Forms;
 using Timer = System.Windows.Forms.Timer;
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>
     /// Snagit-style capture widget: a small always-on-top tab docked to the top edge of the screen.

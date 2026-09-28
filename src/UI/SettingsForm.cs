@@ -5,7 +5,7 @@ using System.IO;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>TextBox that records a key combination.</summary>
     public class HotkeyBox : TextBox

@@ -4,7 +4,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>All toolbar / ribbon icons are drawn with GDI+ on a 24x24 grid, so they stay sharp at any DPI.</summary>
     public static class Icons

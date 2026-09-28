@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>Minimal AVI (RIFF) muxer for Motion-JPEG video, playable by Windows Media Player, VLC, browsers via ffmpeg, etc.</summary>
     public class AviWriter : IDisposable

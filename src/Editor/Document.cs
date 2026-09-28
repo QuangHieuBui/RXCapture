@@ -9,7 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Xml.Linq;
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>The image being edited: an immutable base bitmap plus a list of annotation objects, with undo/redo.</summary>
     public class Document

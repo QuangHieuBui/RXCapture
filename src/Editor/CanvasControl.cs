@@ -6,7 +6,7 @@ using System.Drawing.Imaging;
 using System.Linq;
 using System.Windows.Forms;
 
-namespace ShotCraft
+namespace RXCapture
 {
     public enum Tool { Select, Arrow, Line, Shape, Callout, Text, Step, Stamp, Pen, Highlighter, Blur, Magnify, Spotlight, Fill, Eraser, Crop, CutOut }
 

@@ -10,7 +10,7 @@ using System.Threading;
 using Timer = System.Windows.Forms.Timer;
 using System.Windows.Forms;
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>Screen video recording: MJPEG AVI, optionally converted to GIF (built in) or MP4 (needs ffmpeg.exe).</summary>
     public static class VideoRecorder
@@ -299,7 +299,7 @@ namespace ShotCraft
             btnRec.Enabled = true; btnStop.Enabled = true;
             btnRec.Image = Icons.Get("pause", 22, true);
             frame.Recording = true; frame.Invalidate();
-            aviPath = Path.Combine(Path.GetTempPath(), "shotcraft_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".avi");
+            aviPath = Path.Combine(Path.GetTempPath(), "rxcapture_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".avi");
             sw.Start();
             worker = new Thread(CaptureLoop) { IsBackground = true, Priority = ThreadPriority.AboveNormal };
             worker.Start();

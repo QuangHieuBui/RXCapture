@@ -5,7 +5,7 @@ using System.Drawing.Drawing2D;
 using System.IO;
 using System.Windows.Forms;
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>Wrapping grid of library thumbnails (the tray at the bottom of the editor and the Library window).</summary>
     public class ThumbGrid : ScrollableControl

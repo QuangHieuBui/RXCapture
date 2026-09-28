@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Xml.Linq;
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>One saved default style, stored in settings.xml as the serialised template annotation.</summary>
     public class ToolDefaultEntry

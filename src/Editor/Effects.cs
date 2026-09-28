@@ -6,7 +6,7 @@ using System.Drawing.Imaging;
 using System.Drawing.Text;
 using System.Runtime.InteropServices;
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>Pure image-processing helpers. Every function returns a new bitmap and never mutates its input.</summary>
     public static class Effects

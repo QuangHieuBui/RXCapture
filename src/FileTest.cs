@@ -6,7 +6,7 @@ using System.Reflection;
 using System.Text;
 using System.Windows.Forms;
 
-namespace ShotCraft
+namespace RXCapture
 {
     /// <summary>Tests for the editor's File panel: New Image / New from Clipboard / Save / Convert Images, and the panel itself.</summary>
     static class FileTest

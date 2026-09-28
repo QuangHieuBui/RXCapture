@@ -8,7 +8,7 @@ using System.Globalization;
 using System.IO;
 using System.Xml.Linq;
 
-namespace ShotCraft
+namespace RXCapture
 {
     public enum AnnKind { Arrow, Line, Shape, Callout, Text, Step, Stamp, Pen, Blur, Magnify, Spotlight, Image }
 
