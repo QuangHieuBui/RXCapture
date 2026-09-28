@@ -17,6 +17,7 @@ namespace RXCapture
         public CaptureAction Action;
         public List<Point> Freeform;      // screen coordinates, null unless freehand
         public WinInfo Window;
+        public Point? ScrollPoint;        // scrolling capture: where the user clicked to start (screen coordinates); the wheel is sent here
     }
 
     /// <summary>
@@ -25,7 +26,7 @@ namespace RXCapture
     /// </summary>
     public class RegionOverlay : Form
     {
-        enum St { Idle, Dragging, Adjusting, Moving, Resizing, Freehand }
+        enum St { Idle, Dragging, Adjusting, Moving, Resizing, Freehand, ScrollPick }
 
         class Btn { public Rectangle R; public string Id; public string Label; public string Icon; }
 
@@ -49,6 +50,8 @@ namespace RXCapture
         readonly List<Point> free = new List<Point>();
         readonly List<Btn> buttons = new List<Btn>();
         Rectangle lastDirty = Rectangle.Empty;
+        Point? scrollPt;                        // the click that starts the auto-scroll (client coordinates)
+        static Cursor scrollCursor;
         Rectangle hintRect;
         Rectangle hoverRect { get { return (chain.Count > 0 && mode != OverlayMode.Region && mode != OverlayMode.Freehand && mode != OverlayMode.Fixed) ? chain[Math.Max(0, Math.Min(level, chain.Count - 1))] : Rectangle.Empty; } }
         public OverlayResult Result;
@@ -83,7 +86,7 @@ namespace RXCapture
             }
 
             var mon = Screen.FromPoint(Cursor.Position).Bounds;
-            int hw = 640, hh = 30;
+            int hw = 900, hh = 30;
             hintRect = new Rectangle(mon.X - vs.X + (mon.Width - hw) / 2, mon.Y - vs.Y + 14, hw, hh);
         }
 
@@ -163,11 +166,22 @@ namespace RXCapture
             Rectangle r = st == St.Freehand || free.Count > 2 && mode == OverlayMode.Freehand ? BoundsOf(free) : sel;
             r = Clamp(r);
             if (r.Width < 2 || r.Height < 2) return;
+            var act = forced.HasValue ? forced.Value : action;
+            if (act == CaptureAction.Scroll && scrollPt == null && st != St.ScrollPick)
+            {
+                // scrolling capture: keep the selection and ask where to start scrolling (a click on the page content)
+                sel = r; st = St.ScrollPick;
+                if (scrollCursor == null) scrollCursor = CursorFactory.DownArrow();
+                Cursor = sel.Contains(mouse) ? scrollCursor : Cursors.No;
+                Redraw();
+                return;
+            }
             Result = new OverlayResult
             {
                 Rect = new Rectangle(r.X + vs.X, r.Y + vs.Y, r.Width, r.Height),
-                Action = forced.HasValue ? forced.Value : action,
-                Window = hoverWin
+                Action = act,
+                Window = hoverWin,
+                ScrollPoint = scrollPt.HasValue ? ToScreen(scrollPt.Value) : (Point?)null
             };
             if (mode == OverlayMode.Freehand && free.Count > 2)
             {
@@ -239,6 +253,9 @@ namespace RXCapture
                 case St.Adjusting:
                     Cursor = CursorFor(HitHandle(mouse));
                     break;
+                case St.ScrollPick:
+                    Cursor = sel.Contains(mouse) ? scrollCursor : Cursors.No;      // a down arrow over the selection: click here to start scrolling
+                    break;
             }
             Redraw();
         }
@@ -290,6 +307,12 @@ namespace RXCapture
         {
             base.OnMouseDown(e);
             mouse = e.Location;
+            if (st == St.ScrollPick)
+            {
+                if (e.Button == MouseButtons.Left && sel.Contains(mouse)) { scrollPt = mouse; Finish(CaptureAction.Scroll); }
+                else if (e.Button != MouseButtons.Left) { st = St.Adjusting; scrollPt = null; Cursor = Cursors.Cross; Redraw(); }   // right click: back to adjusting
+                return;
+            }
             if (e.Button == MouseButtons.Right || e.Button == MouseButtons.Middle)
             {
                 if (st == St.Adjusting || sel != Rectangle.Empty && mode != OverlayMode.Fixed) { sel = Rectangle.Empty; st = St.Idle; free.Clear(); Cursor = Cursors.Cross; UpdateHover(); Redraw(); }
@@ -375,12 +398,14 @@ namespace RXCapture
             switch (e.KeyCode)
             {
                 case Keys.Escape:
-                    if (st == St.Adjusting) { sel = Rectangle.Empty; st = St.Idle; UpdateHover(); Redraw(); }
+                    if (st == St.ScrollPick) Close();
+                    else if (st == St.Adjusting) { sel = Rectangle.Empty; st = St.Idle; UpdateHover(); Redraw(); }
                     else Close();
                     break;
                 case Keys.Enter:
                 case Keys.Space:
-                    if (st == St.Adjusting) Finish(CaptureAction.Image);
+                    if (st == St.ScrollPick) { scrollPt = sel.Contains(mouse) ? mouse : new Point(sel.X + sel.Width / 2, sel.Y + sel.Height / 2); Finish(CaptureAction.Scroll); }
+                    else if (st == St.Adjusting) Finish(CaptureAction.Image);
                     else if (st == St.Idle && !hoverRect.IsEmpty) { sel = Clamp(hoverRect); EndSelection(); if (st == St.Adjusting) Finish(CaptureAction.Image); }
                     else if (mode == OverlayMode.Fixed) Finish(CaptureAction.Image);
                     break;
@@ -422,7 +447,7 @@ namespace RXCapture
 
         Rectangle LoupeRect()
         {
-            if (!cfg.ShowMagnifier || st == St.Adjusting) return Rectangle.Empty;
+            if (!cfg.ShowMagnifier || st == St.Adjusting || st == St.ScrollPick) return Rectangle.Empty;
             const int w = 150, h = 184;
             int x = mouse.X + 22, y = mouse.Y + 22;
             if (x + w > ClientSize.Width) x = mouse.X - 22 - w;
@@ -528,6 +553,8 @@ namespace RXCapture
                 Chip(g, label, bright.X, ly, smallB, Color.FromArgb(220, 20, 24, 30));
             }
 
+            if (st == St.ScrollPick) DrawScrollPrompt(g);
+
             if (st == St.Adjusting || st == St.Moving || st == St.Resizing)
             {
                 foreach (var hp in HandlePoints())
@@ -550,6 +577,8 @@ namespace RXCapture
         void DrawHint(Graphics g)
         {
             string t;
+            if (st == St.ScrollPick) t = Loc.T("Click on the page content to start scrolling down  •  Right-click = back  •  Esc = cancel");
+            else
             switch (mode)
             {
                 case OverlayMode.Window: t = Loc.T("Click a window to capture  •  Esc = cancel"); break;
@@ -562,6 +591,20 @@ namespace RXCapture
             var r = new Rectangle(hintRect.X + (hintRect.Width - (int)sz.Width - 20) / 2, hintRect.Y, (int)sz.Width + 20, hintRect.Height);
             using (var p = RoundRect(r, 8)) using (var b = new SolidBrush(Color.FromArgb(200, 17, 24, 39))) g.FillPath(b, p);
             g.DrawString(t, small, Brushes.White, r.X + 10, r.Y + (r.Height - sz.Height) / 2);
+        }
+
+        /// <summary>A big translucent down arrow in the middle of the selection: "click here to start scrolling down".</summary>
+        void DrawScrollPrompt(Graphics g)
+        {
+            if (sel.IsEmpty) return;
+            int d = Math.Max(30, Math.Min(90, Math.Min(sel.Width, sel.Height) / 4));
+            int cx = sel.X + sel.Width / 2, cy = sel.Y + sel.Height / 2;
+            float w = d * 0.36f;
+            var pts = new[] {
+                new PointF(cx - w / 2, cy - d / 2f), new PointF(cx + w / 2, cy - d / 2f), new PointF(cx + w / 2, cy),
+                new PointF(cx + d / 2f, cy), new PointF(cx, cy + d / 2f), new PointF(cx - d / 2f, cy), new PointF(cx - w / 2, cy) };
+            using (var b = new SolidBrush(Color.FromArgb(150, 255, 255, 255))) g.FillPolygon(b, pts);
+            using (var p = new Pen(Color.FromArgb(200, Hi), 2f) { LineJoin = LineJoin.Round }) g.DrawPolygon(p, pts);
         }
 
         void DrawToolbar(Graphics g)
@@ -628,6 +671,46 @@ namespace RXCapture
         {
             if (disposing) { dimmed.Dispose(); small.Dispose(); smallB.Dispose(); }
             base.Dispose(disposing);
+        }
+    }
+}
+
+namespace RXCapture
+{
+    /// <summary>Builds the mouse pointer used while choosing where a scrolling capture starts.</summary>
+    static class CursorFactory
+    {
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        struct ICONINFO { public bool fIcon; public int xHotspot, yHotspot; public IntPtr hbmMask, hbmColor; }
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool GetIconInfo(IntPtr hIcon, out ICONINFO info);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr CreateIconIndirect(ref ICONINFO info);
+        [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool DestroyIcon(IntPtr h);
+        [System.Runtime.InteropServices.DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr h);
+
+        /// <summary>A white arrow pointing down; the hot spot is the tip, i.e. the spot that is clicked.</summary>
+        public static Cursor DownArrow()
+        {
+            const int S = 40;
+            using (var bmp = new Bitmap(S, S, PixelFormat.Format32bppArgb))
+            {
+                using (var g = Graphics.FromImage(bmp))
+                {
+                    g.SmoothingMode = SmoothingMode.AntiAlias; g.Clear(Color.Transparent);
+                    var pts = new[] { new PointF(15, 3), new PointF(25, 3), new PointF(25, 18), new PointF(33, 18), new PointF(20, 36), new PointF(7, 18), new PointF(15, 18) };
+                    g.FillPolygon(Brushes.White, pts);
+                    using (var p = new Pen(Color.FromArgb(230, 20, 24, 30), 2f) { LineJoin = LineJoin.Round }) g.DrawPolygon(p, pts);
+                }
+                IntPtr icon = bmp.GetHicon();
+                try
+                {
+                    ICONINFO ii; GetIconInfo(icon, out ii);
+                    ii.fIcon = false; ii.xHotspot = 20; ii.yHotspot = 36;
+                    IntPtr h = CreateIconIndirect(ref ii);
+                    DeleteObject(ii.hbmMask); DeleteObject(ii.hbmColor);
+                    return h == IntPtr.Zero ? Cursors.SizeNS : new Cursor(h);
+                }
+                finally { DestroyIcon(icon); }
+            }
         }
     }
 }

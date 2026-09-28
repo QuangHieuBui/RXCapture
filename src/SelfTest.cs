@@ -618,8 +618,9 @@ namespace RXCapture
                         var ov = new RegionOverlay(frozen, vs, new List<WinInfo>(), OverlayMode.Region, null);
                         var t0 = typeof(RegionOverlay);
                         var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
-                        t0.GetField("sel", flags).SetValue(ov, new Rectangle(prim.X - vs.X, prim.Y - vs.Y, prim.Width, prim.Height));
-                        var stField = t0.GetField("st", flags); stField.SetValue(ov, Enum.Parse(stField.FieldType, "Adjusting"));
+                        bool scrollStep = Array.IndexOf(args, "scroll") >= 0;      // the step after pressing Scroll: choose where to start
+                        t0.GetField("sel", flags).SetValue(ov, scrollStep ? new Rectangle(prim.X - vs.X + 500, prim.Y - vs.Y + 250, 900, 600) : new Rectangle(prim.X - vs.X, prim.Y - vs.Y, prim.Width, prim.Height));
+                        var stField = t0.GetField("st", flags); stField.SetValue(ov, Enum.Parse(stField.FieldType, scrollStep ? "ScrollPick" : "Adjusting"));
                         var ot = new Timer { Interval = 800 };
                         ot.Tick += delegate
                         {

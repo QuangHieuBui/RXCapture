@@ -54,6 +54,8 @@ Bấm tab **File** trong Editor: **New Image** (canvas trống, chọn cỡ + n�
 ## Tính năng
 **Chụp**: All-in-One (đưa chuột vào cửa sổ/đối tượng để chọn, lăn chuột để đổi cha/con, kính lúp + mã màu, phím `C` chép mã màu), Region, Window, Full Screen (màn hình hiện tại hoặc tất cả), Freehand, Fixed region, Scrolling window, Repeat last region, hẹn giờ, có/không con trỏ chuột, hỗ trợ nhiều màn hình và DPI khác nhau, hiệu ứng tự áp dụng (viền, đổ bóng, mép rách).
 
+**Chụp cuộn (Scrolling)**: nhấn `Ctrl+Shift+S` (hoặc chọn vùng rồi bấm nút **Scroll**) → kéo chọn vùng nội dung cần chụp → con trỏ đổi thành **mũi tên chỉ xuống** → **bấm chuột vào nội dung trang** (chỗ bấm là nơi app gửi lệnh lăn chuột, nên phải là phần cuộn được, không phải thanh công cụ/cột bên) → RXCapture tự cuộn dần xuống tới hết trang rồi ghép thành một ảnh dài. Nhấn **Esc** bất cứ lúc nào để dừng và giữ phần đã chụp; chuột phải ở bước chọn điểm để quay lại chỉnh vùng. Cột bên đổi khi cuộn (minimap, mục lục, quảng cáo) và thanh cố định không làm hỏng việc ghép ảnh.
+
 **Editor** (ribbon tối: File / Tools / Image / Share / Library): Select, Arrow, Line, Shape, Callout, Text (sửa trực tiếp), Step (tự đánh số), Stamp (10 mẫu + ảnh riêng), Pen, Highlighter, Fill, Blur/Pixelate, Magnify, Spotlight, Eraser, Crop, Cut Out. Kiểu (Styles) có sẵn, Outline / Fill / Effects, phông chữ, căn lề, đổ bóng, độ trong suốt, sắp xếp lớp, sao chép/dán đối tượng, Undo/Redo (40 bước), zoom, kéo cạnh ảnh để đổi kích thước canvas.
 Menu **Image**: đổi cỡ ảnh, canvas, xoay/lật, trim, viền, đổ bóng, mép rách, bo góc, phản chiếu, chỉnh màu, đen trắng, đảo màu, sepia, blur, sharpen, emboss, hình mờ (watermark).
 

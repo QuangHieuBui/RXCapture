@@ -132,6 +132,8 @@ namespace RXCapture
         }
 
         public static bool KeyDown(int vk) { return (GetAsyncKeyState(vk) & 0x8000) != 0; }
+        /// <summary>True if the key is down now or was pressed since the previous call (a quick tap between two polls still counts).</summary>
+        public static bool KeyPressedSince(int vk) { return (GetAsyncKeyState(vk) & 0x8001) != 0; }
     }
 
     /// <summary>A top-level window captured at snapshot time.</summary>

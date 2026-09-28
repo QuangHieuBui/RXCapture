@@ -346,7 +346,7 @@ namespace RXCapture
                     else if (pick.Action == CaptureAction.Scroll)
                     {
                         Thread.Sleep(200);
-                        result = ScrollCapture.Run(rect, cur);
+                        result = ScrollCapture.Run(rect, cur, pick.ScrollPoint);
                     }
                     else if (pick.Action == CaptureAction.Video)
                     {

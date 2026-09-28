@@ -535,6 +535,60 @@ namespace RXCapture
                 }
                 frozen.Dispose();
             }
+            // scrolling capture: after the region is chosen the overlay shows a down arrow and waits for a click on the page
+            foreach (bool escape in new[] { false, true })
+            {
+                var region = new Rectangle(prim.X + 300, prim.Y + 200, 640, 360);
+                Bitmap frozen = ScreenGrabber.Grab(vs);
+                var tops = WindowFinder.Snapshot(IntPtr.Zero);
+                var a = new Point(region.X - vs.X, region.Y - vs.Y);
+                var b = new Point(region.Right - vs.X, region.Bottom - vs.Y);
+                var click = new Point(a.X + 200, a.Y + 150);
+                System.Windows.Forms.Cursor seen = null; bool clicked = false; int stage = 0;
+                var timer = new System.Windows.Forms.Timer { Interval = 700 };
+                timer.Tick += delegate
+                {
+                    var f = Form.ActiveForm;
+                    if (f == null || !(f is RegionOverlay)) { if (++stage > 14) { timer.Stop(); foreach (Form x in Application.OpenForms) if (x is RegionOverlay) x.Close(); } return; }
+                    timer.Interval = 250;
+                    switch (stage++)
+                    {
+                        case 0:
+                            SendMessage(f.Handle, 0x200, IntPtr.Zero, LP(a));
+                            SendMessage(f.Handle, 0x201, (IntPtr)1, LP(a));
+                            for (int i = 1; i <= 8; i++) SendMessage(f.Handle, 0x200, (IntPtr)1, LP(new Point(a.X + (b.X - a.X) * i / 8, a.Y + (b.Y - a.Y) * i / 8)));
+                            SendMessage(f.Handle, 0x202, IntPtr.Zero, LP(b));                       // releasing the drag must NOT finish a scrolling capture
+                            break;
+                        case 2:
+                            SendMessage(f.Handle, 0x200, IntPtr.Zero, LP(click));
+                            break;
+                        case 3:
+                            seen = f.Cursor;
+                            if (escape) { SendMessage(f.Handle, 0x100, (IntPtr)27, IntPtr.Zero); break; }   // Esc cancels
+                            clicked = true;
+                            SendMessage(f.Handle, 0x201, (IntPtr)1, LP(click));
+                            SendMessage(f.Handle, 0x202, IntPtr.Zero, LP(click));
+                            break;
+                    }
+                };
+                timer.Start();
+                var res = RegionOverlay.Pick(frozen, vs, tops, OverlayMode.Region, CaptureAction.Scroll);
+                timer.Stop(); timer.Dispose();
+                string tag = escape ? "scroll pick + Esc" : "scroll pick + click";
+                expect(tag + ": the pointer changes from the cross while choosing where to scroll", seen != null && seen != Cursors.Cross && seen != Cursors.No && seen != Cursors.Default, seen == null ? "null" : "cursor handle " + seen.Handle);
+                if (escape) expect(tag + ": Esc cancels, no result", res == null, res == null ? "null" : res.Rect.ToString());
+                else
+                {
+                    expect(tag + ": result only after the click", res != null && clicked, res == null ? "null" : "ok");
+                    if (res != null)
+                    {
+                        expect(tag + ": action is Scroll and the region is kept", res.Action == CaptureAction.Scroll && res.Rect == region, res.Action + " " + res.Rect);
+                        expect(tag + ": the click point is reported (screen coordinates)", res.ScrollPoint.HasValue && res.ScrollPoint.Value == new Point(click.X + vs.X, click.Y + vs.Y), res.ScrollPoint.HasValue ? res.ScrollPoint.Value.ToString() : "none");
+                    }
+                }
+                frozen.Dispose();
+            }
+
             log.AppendLine(failed == 0 ? "ALL OVERLAY TESTS PASSED" : failed + " FAILED");
             File.WriteAllText(logPath ?? "overlay.log", log.ToString());
             return failed == 0 ? 0 : 1;
@@ -724,7 +778,9 @@ namespace RXCapture
         {
             var p = args[2].Split(',');
             var r = new Rectangle(int.Parse(p[0]), int.Parse(p[1]), int.Parse(p[2]), int.Parse(p[3]));
-            using (var bmp = ScrollCapture.Run(r, CursorSnap.Take()))
+            Point? at = null;                                   // optional 3rd argument "x,y": where the wheel is sent (the click point)
+            if (args.Length > 3) { var q = args[3].Split(','); at = new Point(int.Parse(q[0]), int.Parse(q[1])); }
+            using (var bmp = ScrollCapture.Run(r, CursorSnap.Take(), at))
             {
                 if (bmp == null) return 1;
                 bmp.Save(args[1], ImageFormat.Png);

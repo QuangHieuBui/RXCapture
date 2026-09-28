@@ -111,6 +111,19 @@ namespace RXCapture
         }
 
 
+        /// <summary>Waits while keeping the UI alive; true as soon as Esc is pressed.</summary>
+        static bool WaitOrEsc(int ms)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while (sw.ElapsedMilliseconds < ms)
+            {
+                if (Native.KeyPressedSince(0x1B)) return true;
+                Application.DoEvents();
+                Thread.Sleep(15);
+            }
+            return false;
+        }
+
         public static Bitmap Stitch(List<Bitmap> strips, int width)
         {
             int total = 0;
@@ -125,8 +138,9 @@ namespace RXCapture
             return result;
         }
 
-        /// <summary>Interactive capture of a screen rectangle. Returns null if cancelled/failed.</summary>
-        public static Bitmap Run(Rectangle region, CursorSnap cursorForRestore)
+        /// <summary>Scrolls the page under <paramref name="scrollAt"/> (default: the middle of the region) with the mouse wheel until it stops moving
+        /// or Esc is pressed, and stitches what was seen. Returns null if nothing could be captured.</summary>
+        public static Bitmap Run(Rectangle region, CursorSnap cursorForRestore, Point? scrollAt = null)
         {
             var cfg = AppSettings.Current;
             var strips = new List<Bitmap>();
@@ -135,9 +149,12 @@ namespace RXCapture
             Application.DoEvents();
 
             Point oldPos = Cursor.Position;
+            Point at = scrollAt ?? new Point(region.X + region.Width / 2, region.Y + region.Height / 2);
+            at = new Point(Math.Max(region.Left, Math.Min(region.Right - 1, at.X)), Math.Max(region.Top, Math.Min(region.Bottom - 1, at.Y)));
+            Native.KeyPressedSince(0x1B);            // forget an Esc pressed earlier (it may have cancelled the region overlay)
             try
             {
-                Native.SetCursorPos(region.X + region.Width / 2, region.Y + region.Height / 2);
+                Native.SetCursorPos(at.X, at.Y);
                 Thread.Sleep(250);
 
                 Bitmap prev = ScreenGrabber.Grab(region);
@@ -146,25 +163,26 @@ namespace RXCapture
                 int notches = 3;
                 int totalHeight = prev.Height;
                 int stalls = 0;
+                bool firstStill = false;                // the very first wheel step moved nothing
 
                 for (int frame = 0; frame < 120; frame++)
                 {
-                    if (Native.KeyDown(0x1B)) break;   // Esc
-                    Native.SetCursorPos(region.X + region.Width / 2, region.Y + region.Height / 2);
+                    if (Native.KeyPressedSince(0x1B)) break;   // Esc
+                    Native.SetCursorPos(at.X, at.Y);
                     Native.MouseWheel(-notches);
-                    Thread.Sleep(320);
+                    if (WaitOrEsc(320)) break;
                     Application.DoEvents();
 
                     var cur = ScreenGrabber.Grab(region);
                     var curSig = Signature(cur, 24, Segments);
                     int shift = FindShift(prevSig, curSig);
-                    if (shift == 0) { cur.Dispose(); break; }               // nothing moved: reached the end
+                    if (shift == 0) { cur.Dispose(); if (frame == 0) firstStill = true; break; }   // nothing moved: reached the end
                     if (shift < 0)
                     {
                         // scrolled too far (or animation still running): back off and retry
                         cur.Dispose();
                         Native.MouseWheel(notches);          // scroll back to the previous position
-                        Thread.Sleep(320);
+                        if (WaitOrEsc(320)) break;
                         notches = Math.Max(1, notches / 2);
                         if (++stalls > 4) break;
                         continue;
@@ -184,6 +202,7 @@ namespace RXCapture
                     if (totalHeight > 60000) break;                          // sanity limit
                 }
                 prev.Dispose();
+                if (firstStill) App.Balloon(Loc.T("Nothing scrolled here - click on the page content itself (not a toolbar or side panel)."));
                 if (strips.Count == 0) return null;
                 return Stitch(strips, region.Width);
             }
