@@ -13,6 +13,12 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 ```
 Dùng `csc.exe` có sẵn của Windows (C# 5) — không cần Visual Studio hay .NET SDK.
 
+## Đóng gói file cài đặt (Setup)
+```
+powershell -ExecutionPolicy Bypass -File build-setup.ps1 [-Version 1.0.0]
+```
+Tạo `dist\RXCapture-Setup-<phiên bản>.exe` (~0,6 MB, tự chứa toàn bộ ứng dụng; chỉ cần `csc.exe` có sẵn của Windows). Bấm đúp file này để cài: chọn thư mục (mặc định `%LOCALAPPDATA%\Programs\RXCapture`), tùy chọn biểu tượng ở màn hình nền và chạy ngay sau khi cài. Cài cho tài khoản hiện tại, **không cần quyền quản trị**; có mục trong *Settings > Apps* để gỡ, và `Uninstall.exe` trong thư mục cài (hỏi có xóa luôn cài đặt/thư viện hay không). Dòng lệnh: `/S` (im lặng), `/D=<thư mục>`, `/nodesktop`, `/launch`; gỡ im lặng: `Uninstall.exe /uninstall /S [/removedata]`. Cài đè lên bản cũ sẽ tự tắt RXCapture đang chạy từ thư mục đó và giữ nguyên dữ liệu.
+
 ## Phím tắt toàn cục (đổi được trong Settings > Hotkeys)
 | Phím | Chức năng |
 |---|---|
