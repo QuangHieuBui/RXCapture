@@ -140,13 +140,13 @@ namespace RXCapture
                 for (int y = 0; y < total; y++) { var c = Color.FromArgb(rnd.Next(256), rnd.Next(256), rnd.Next(256)); for (int x = 0; x < W; x++) page.SetPixel(x, y, (x + y) % 7 == 0 ? Color.White : c); }
                 var strips = new List<Bitmap>();
                 Bitmap prev = ScreenGrabber.Crop(page, new Rectangle(0, 0, W, H)); strips.Add(new Bitmap(prev));
-                long[] ph = ScrollCapture.RowHashes(prev, 0);
+                var ph = ScrollCapture.Signature(prev, 0, 12);
                 int off = 0;
                 foreach (int step in new[] { 50, 80, 45, 60 })
                 {
                     off += step;
                     var cur = ScreenGrabber.Crop(page, new Rectangle(0, off, W, H));
-                    var ch = ScrollCapture.RowHashes(cur, 0);
+                    var ch = ScrollCapture.Signature(cur, 0, 12);
                     int sh = ScrollCapture.FindShift(ph, ch);
                     if (sh != step) return "expected shift " + step + " got " + sh;
                     strips.Add(ScreenGrabber.Crop(cur, new Rectangle(0, H - sh, W, sh)));
@@ -157,6 +157,42 @@ namespace RXCapture
                 // compare with original region
                 for (int y = 0; y < stitched.Height; y += 17) if (stitched.GetPixel(5, y) != page.GetPixel(5, y)) return "pixel mismatch at row " + y;
                 var same = ScrollCapture.FindShift(ph, ph); if (same != 0) return "identical frames should give 0, got " + same;
+                return null;
+            });
+
+            Check("scrolling capture: side panel that changes while scrolling and a fixed header", delegate
+            {
+                // page whose right part (a minimap / table of contents) redraws differently on every frame, plus a sticky header
+                var rnd = new Random(11);
+                int W = 300, H = 160, total = 900, side = 90, header = 14;
+                var page = new Bitmap(W, total, PixelFormat.Format32bppArgb);
+                for (int y = 0; y < total; y++) { var c = Color.FromArgb(rnd.Next(256), rnd.Next(256), rnd.Next(256)); for (int x = 0; x < W; x++) page.SetPixel(x, y, (x * 3 + y) % 11 == 0 ? Color.White : c); }
+                Func<int, Bitmap> frame = off =>
+                {
+                    var f = ScreenGrabber.Crop(page, new Rectangle(0, off, W, H));
+                    var r2 = new Random(off * 7 + 1);
+                    using (var g = Graphics.FromImage(f))
+                    {
+                        for (int y = 0; y < H; y += 4) using (var b = new SolidBrush(Color.FromArgb(r2.Next(256), r2.Next(256), r2.Next(256)))) g.FillRectangle(b, W - side, y, side, 4);   // changes with the scroll offset
+                        g.FillRectangle(Brushes.DarkSlateGray, 0, 0, W - side, header);                                                                                            // sticky header
+                    }
+                    return f;
+                };
+                var prev = frame(0); var ps = ScrollCapture.Signature(prev, 0, 12);
+                int off2 = 0;
+                foreach (int step in new[] { 60, 95, 40, 70, 110 })
+                {
+                    off2 += step;
+                    var cur = frame(off2); var cs = ScrollCapture.Signature(cur, 0, 12);
+                    int sh = ScrollCapture.FindShift(ps, cs);
+                    if (sh != step) return "expected shift " + step + " got " + sh + " with a changing side panel";
+                    prev.Dispose(); prev = cur; ps = cs;
+                }
+                // end of the page: the content stays put but the side panel still redraws
+                var end1 = frame(off2); var end2 = ScreenGrabber.Crop(page, new Rectangle(0, off2, W, H));
+                using (var g = Graphics.FromImage(end2)) { g.FillRectangle(Brushes.Orange, W - side, 0, side, H); g.FillRectangle(Brushes.DarkSlateGray, 0, 0, W - side, header); }
+                int atEnd = ScrollCapture.FindShift(ScrollCapture.Signature(end1, 0, 12), ScrollCapture.Signature(end2, 0, 12));
+                if (atEnd != 0) return "unmoved page with a redrawn side panel should give 0, got " + atEnd;
                 return null;
             });
 

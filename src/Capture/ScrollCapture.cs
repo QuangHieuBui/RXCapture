@@ -14,50 +14,102 @@ namespace RXCapture
     /// </summary>
     public static class ScrollCapture
     {
-        /// <summary>Row signatures of a frame (the right-hand scrollbar strip is ignored).</summary>
-        public static unsafe long[] RowHashes(Bitmap bmp, int ignoreRight)
+        const int Segments = 12;      // horizontal slices compared separately when matching frames
+
+        /// <summary>Per-row fingerprints of a frame, one hash for each of several horizontal segments.
+        /// Matching segment by segment keeps working when part of the page does not scroll with the rest
+        /// (a minimap, a table of contents, an ad, a video, a scrollbar) instead of failing on every row.</summary>
+        public sealed class RowSig
+        {
+            public int Height, Segs;
+            public ulong[] Hash;        // Hash[y * Segs + k]
+        }
+
+        /// <summary>Fingerprints a frame; the strip at the right edge (the scrollbar) is ignored.</summary>
+        public static unsafe RowSig Signature(Bitmap bmp, int ignoreRight, int segs)
         {
             var data = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
             try
             {
-                var h = new long[bmp.Height];
-                int w = Math.Max(1, bmp.Width - ignoreRight);
+                var sig = new RowSig { Height = bmp.Height, Segs = segs, Hash = new ulong[bmp.Height * segs] };
+                int w = Math.Max(segs, bmp.Width - ignoreRight);
                 for (int y = 0; y < bmp.Height; y++)
                 {
                     uint* p = (uint*)((byte*)data.Scan0 + y * data.Stride);
-                    ulong a = 1469598103934665603UL;
-                    for (int x = 0; x < w; x++) { a ^= p[x]; a *= 1099511628211UL; }
-                    h[y] = (long)a;
+                    for (int k = 0; k < segs; k++)
+                    {
+                        int x0 = w * k / segs, x1 = w * (k + 1) / segs;
+                        ulong a = 1469598103934665603UL;
+                        for (int x = x0; x < x1; x++) { a ^= p[x]; a *= 1099511628211UL; }
+                        sig.Hash[y * segs + k] = a;
+                    }
                 }
-                return h;
+                return sig;
             }
             finally { bmp.UnlockBits(data); }
         }
 
         /// <summary>
         /// Finds how many pixels 'cur' has been scrolled down relative to 'prev'.
-        /// Returns 0 if the frames are identical (end of page), -1 if no overlap was found.
+        /// Returns 0 if the page did not move (end of page), -1 if no overlap was found.
+        /// A shift is accepted when enough segments (the part that scrolls) agree with it on their distinctive rows;
+        /// segments that change or stay fixed while scrolling simply do not vote.
         /// </summary>
-        public static int FindShift(long[] prev, long[] cur)
+        public static int FindShift(RowSig prev, RowSig cur)
         {
-            int h = prev.Length;
-            // identical?
-            int same = 0;
-            for (int i = 0; i < h; i++) if (prev[i] == cur[i]) same++;
-            if (same >= h * 0.995) return 0;
+            int h = prev.Height, K = prev.Segs;
+            long all = (long)h * K, eq = 0;
+            for (int i = 0; i < all; i++) if (prev.Hash[i] == cur.Hash[i]) eq++;
+            if (eq >= all * 0.995) return 0;                                   // identical: nothing moved
 
-            int bestShift = -1; double bestScore = 0;
+            // per segment, the commonest row value is the flat background: it matches at every shift, so it must not vote
+            var mode = new ulong[K]; var hasBg = new bool[K];
+            for (int k = 0; k < K; k++)
+            {
+                var counts = new Dictionary<ulong, int>(); ulong best = 0; int bestN = 0;
+                for (int y = 0; y < h; y++) { int n; ulong v = prev.Hash[y * K + k]; counts.TryGetValue(v, out n); counts[v] = ++n; if (n > bestN) { bestN = n; best = v; } }
+                mode[k] = best; hasBg[k] = bestN >= h / 5;
+            }
+
+            // the page did not move if some segments stay identical row for row while others (a changing side panel) redraw
+            long still = 0;
+            for (int k = 0; k < K; k++)
+            {
+                int info = 0, same = 0;
+                for (int y = 0; y < h; y++)
+                {
+                    ulong a = prev.Hash[y * K + k];
+                    if (hasBg[k] && a == mode[k]) continue;
+                    info++; if (a == cur.Hash[y * K + k]) same++;
+                }
+                if (info >= 6 && same >= info * 0.98) still += same;
+            }
+            if (still >= 12) return 0;
+
+            int bestShift = -1; long bestScore = 0;
             int minOverlap = Math.Max(16, h / 10);
             for (int s = 1; s <= h - minOverlap; s++)
             {
-                int overlap = h - s, match = 0;
-                for (int i = 0; i < overlap; i++) if (prev[s + i] == cur[i]) match++;
-                double score = (double)match / overlap;
-                // prefer larger absolute matches when scores are close (sticky headers/footers reduce the ratio)
-                if (score >= 0.80 && match > bestScore) { bestScore = match; bestShift = s; }
+                int overlap = h - s; long score = 0;
+                for (int k = 0; k < K; k++)
+                {
+                    int info = 0, match = 0;
+                    for (int i = 0; i < overlap; i++)
+                    {
+                        ulong a = prev.Hash[(s + i) * K + k];
+                        if (hasBg[k] && a == mode[k]) continue;
+                        ulong b = cur.Hash[i * K + k];
+                        if (b == prev.Hash[i * K + k]) continue;               // same place in both frames: a fixed header/footer, says nothing about scrolling
+                        info++;
+                        if (a == b) match++;
+                    }
+                    if (info >= 6 && match >= info * 0.8) score += match;      // this segment scrolled by s
+                }
+                if (score >= 12 && score > bestScore) { bestScore = score; bestShift = s; }
             }
             return bestShift;
         }
+
 
         public static Bitmap Stitch(List<Bitmap> strips, int width)
         {
@@ -90,7 +142,7 @@ namespace RXCapture
 
                 Bitmap prev = ScreenGrabber.Grab(region);
                 strips.Add(new Bitmap(prev));
-                long[] prevHash = RowHashes(prev, 24);
+                var prevSig = Signature(prev, 24, Segments);
                 int notches = 3;
                 int totalHeight = prev.Height;
                 int stalls = 0;
@@ -104,8 +156,8 @@ namespace RXCapture
                     Application.DoEvents();
 
                     var cur = ScreenGrabber.Grab(region);
-                    var curHash = RowHashes(cur, 24);
-                    int shift = FindShift(prevHash, curHash);
+                    var curSig = Signature(cur, 24, Segments);
+                    int shift = FindShift(prevSig, curSig);
                     if (shift == 0) { cur.Dispose(); break; }               // nothing moved: reached the end
                     if (shift < 0)
                     {
@@ -122,7 +174,7 @@ namespace RXCapture
                     var strip = ScreenGrabber.Crop(cur, new Rectangle(0, cur.Height - newRows, cur.Width, newRows));
                     strips.Add(strip);
                     totalHeight += newRows;
-                    prev.Dispose(); prev = cur; prevHash = curHash;
+                    prev.Dispose(); prev = cur; prevSig = curSig;
 
                     // adapt scroll speed so that ~50-75% of the view advances each step
                     if (shift < region.Height * 0.35 && notches < 30) notches++;

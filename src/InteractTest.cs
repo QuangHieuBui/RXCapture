@@ -548,6 +548,16 @@ namespace RXCapture
     static class VideoTest
     {
 
+        /// <summary>Average colour of the middle part of an image (a fraction of its width and height): stable against fine detail and rescaling.</summary>
+        static Color AvgCentre(Bitmap b, double frac)
+        {
+            int w = Math.Max(1, (int)(b.Width * frac)), h = Math.Max(1, (int)(b.Height * frac));
+            int x0 = (b.Width - w) / 2, y0 = (b.Height - h) / 2;
+            long r = 0, g = 0, bl = 0; int n = 0;
+            for (int y = y0; y < y0 + h; y++) for (int x = x0; x < x0 + w; x++) { var c = b.GetPixel(x, y); r += c.R; g += c.G; bl += c.B; n++; }
+            return Color.FromArgb((int)(r / n), (int)(g / n), (int)(bl / n));
+        }
+
         /// <summary>Trims 1s..2s out of the recording and checks the result is a valid ~1 s MP4 whose first frame matches the source.</summary>
         static int TrimCheck(LibItem v, string fmt, StringBuilder log)
         {
@@ -569,7 +579,7 @@ namespace RXCapture
             if (ok && first != null)
                 using (var thumb = new Bitmap(v.ThumbFile))
                 {
-                    Color a = thumb.GetPixel(thumb.Width / 2, thumb.Height / 2), c = first.GetPixel(first.Width / 2, first.Height / 2);
+                    Color a = AvgCentre(thumb, 0.12), c = AvgCentre(first, 0.12);
                     dist = Math.Abs(a.R - c.R) + Math.Abs(a.G - c.G) + Math.Abs(a.B - c.B);
                 }
             if (first != null) first.Dispose();
@@ -600,9 +610,9 @@ namespace RXCapture
             try
             {
                 using (var thumb = new Bitmap(v.ThumbFile))
-                using (var shot = ScreenGrabber.Grab(new Rectangle(host.Left + 450, host.Top + 250, 1, 1)))
+                using (var shot = ScreenGrabber.Grab(new Rectangle(host.Left + 400, host.Top + 206, 100, 60)))
                 {
-                    Color a = thumb.GetPixel(thumb.Width / 2, thumb.Height / 2), b = shot.GetPixel(0, 0);
+                    Color a = AvgCentre(thumb, 0.12), b = AvgCentre(shot, 1.0);
                     want = a.R + "," + a.G + "," + a.B; got = b.R + "," + b.G + "," + b.B;
                     dist = Math.Abs(a.R - b.R) + Math.Abs(a.G - b.G) + Math.Abs(a.B - b.B);
                 }
