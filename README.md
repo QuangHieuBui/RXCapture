@@ -1,7 +1,7 @@
-# RXCapture — chụp màn hình & chỉnh sửa ảnh (giao diện tương tự Snagit 12)
+# RXCapture — chụp màn hình & chỉnh sửa ảnh
 
 Ứng dụng Windows tự viết hoàn toàn bằng C# / WinForms (.NET Framework 4.8, có sẵn trong Windows 10/11).
-Không dùng mã hay tài nguyên nào của Snagit, không cần license, không cần cài thêm gì.
+Không cần license, không cần cài thêm gì.
 
 ## Chạy
 - Chạy `bin\RXCapture.exe` (phải giữ `RXCapture.exe.config` cùng thư mục).
@@ -27,7 +27,7 @@ Dùng `csc.exe` có sẵn của Windows (C# 5) — không cần Visual Studio ha
 
 Nếu Windows đã giữ Print Screen cho Snipping Tool, hãy tắt tùy chọn đó trong *Settings > Accessibility > Keyboard* hoặc đổi phím trong RXCapture.
 
-## Cửa sổ Capture (giống Snagit)
+## Cửa sổ Capture
 - 4 tab: **All-in-One**, **Image** (Selection: Region / Window / Full Screen / Scrolling / Freehand / Fixed / Repeat), **Video** (Region / Window / Full Screen, định dạng, FPS), **Presets**.
 - **Share** (Editor / Clipboard / File / Editor + Clipboard), **Effects**, **Timer**, **Include cursor**, nút **Capture** đỏ.
 - **Presets**: lưu cấu hình hiện tại (loại chụp + đầu ra + hiệu ứng + hẹn giờ), đổi tên, xóa, gán **phím tắt riêng** cho từng preset; bấm đúp hoặc nút Capture để chạy. Có sẵn 5 preset mẫu.
@@ -42,7 +42,7 @@ Nếu Windows đã giữ Print Screen cho Snipping Tool, hãy tắt tùy chọn 
 ## Thông số mặc định của công cụ
 Mỗi công cụ vẽ (Arrow, Line, Shape, Callout, Text, Step, Pen, Highlighter, Magnify) có bộ thông số riêng mà đối tượng mới bắt đầu với: màu viền/nền, độ dày, kiểu nét, đầu mũi tên, độ trong suốt, đổ bóng, phông chữ, cỡ chữ, màu chữ, đậm/nghiêng/gạch chân, căn lề. Cách đặt: **Settings > Editor > Default tool properties…** (hoặc nút **Defaults…** ở Tools > Properties) để sửa từng công cụ có xem trước và đặt lại; hoặc chỉnh một đối tượng rồi bấm **Set default** để lưu kiểu của nó làm mặc định. Giá trị được lưu và giữ sau khi khởi động lại; đối tượng đã vẽ không bị đổi.
 
-## Menu File của Editor (giống Snagit)
+## Menu File của Editor
 Bấm tab **File** trong Editor: **New Image** (canvas trống, chọn cỡ + nền/trong suốt, Ctrl+N), **New Capture**, **New from Clipboard**, **Open**, **Save** (Ctrl+S), **Save As ▸** (ảnh / PDF / dự án .scp), **Convert Images** (đổi hàng loạt PNG/JPG/BMP/GIF/TIFF/PDF, kéo thả tệp), **Print ▸**, **Help ▸**, danh sách **Recent Files**, **Editor Options** và **Exit Editor**. Không có các mục chia sẻ đám mây (My Places, Google Drive, thiết bị di động, đăng nhập).
 
 ## Tính năng
@@ -53,7 +53,7 @@ Menu **Image**: đổi cỡ ảnh, canvas, xoay/lật, trim, viền, đổ bóng
 
 **Xuất**: PNG / JPG / BMP / GIF / TIFF / PDF, sao chép clipboard, in, email (Simple MAPI), mở bằng Paint, mở thư mục. Mọi ảnh chụp tự lưu vào **Library** (khay thumbnail dưới editor) ở dạng có thể sửa tiếp (`.scp`).
 
-**Video**: quay vùng màn hình ra AVI (Motion-JPEG) hoặc GIF động. MP4 (H.264) tự dùng nếu đặt `ffmpeg.exe` cạnh `RXCapture.exe`.
+**Video**: quay vùng màn hình ra AVI (Motion-JPEG) hoặc GIF động. MP4 (H.264) dùng bộ mã hóa có sẵn của Windows (Media Foundation), không cần cài thêm; `ffmpeg.exe` cạnh `RXCapture.exe` chỉ là dự phòng.
 
 Giao diện tiếng Anh hoặc tiếng Việt (Settings > General > Language).
 
@@ -71,5 +71,5 @@ RXCapture.exe --videotest log.txt     # quay video qua giao diện thật
 RXCapture.exe --grab x,y,w,h out.png  # chụp một vùng, không giao diện
 ```
 
-## Chưa có so với Snagit 12
+## Chưa có
 Ghi âm (micro/hệ thống) khi quay video, OCR "Grab Text", chia sẻ FTP/đám mây, hiệu ứng phối cảnh, chụp menu nhiều vùng (Multi-area). Chụp menu/tooltip dùng hẹn giờ (Delay) rồi chọn vùng.
