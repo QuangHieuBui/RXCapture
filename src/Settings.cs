@@ -44,7 +44,7 @@ namespace RXCapture
 
         public int VideoFps = 15;
         public bool VideoCursor = true;
-        public string VideoFormat = "avi";           // avi | gif | mp4 (mp4 needs ffmpeg.exe next to the app or in PATH)
+        public string VideoFormat = "avi";           // avi | gif | mp4 (H.264 via Windows Media Foundation)
         public int GifMaxWidth = 800;
 
         public bool RunAtStartup = false;

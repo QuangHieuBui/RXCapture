@@ -87,9 +87,9 @@ namespace RXCapture
             Page("Video");
             nFps = Num("Frames per second", 5, 30, cfg.VideoFps);
             chVCursor = Check("Record the mouse cursor", cfg.VideoCursor);
-            cbVFormat = Combo("Output format", new[] { "AVI (Motion-JPEG)", "GIF (animated)", "MP4 (needs ffmpeg.exe)" }, cfg.VideoFormat == "gif" ? 1 : (cfg.VideoFormat == "mp4" ? 2 : 0));
+            cbVFormat = Combo("Output format", new[] { "AVI (Motion-JPEG)", "GIF (animated)", "MP4 (H.264)" }, cfg.VideoFormat == "gif" ? 1 : (cfg.VideoFormat == "mp4" ? 2 : 0));
             nGif = Num("GIF maximum width (px)", 160, 4000, cfg.GifMaxWidth);
-            Note("Tip: put ffmpeg.exe next to RXCapture.exe to enable MP4 (H.264) output.");
+            Note("MP4 uses the H.264 encoder built into Windows; ffmpeg.exe next to RXCapture.exe is only a fallback.");
 
             Page("Editor");
             chEditorMax = Check("Open the editor maximized (full screen)", cfg.EditorMaximized);

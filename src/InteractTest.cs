@@ -552,7 +552,7 @@ namespace RXCapture
             var log = new System.Text.StringBuilder();
             int failed = 0;
             App.AppIcon = SystemIcons.Application;
-            foreach (var fmt in new[] { "avi", "gif" })
+            foreach (var fmt in new[] { "avi", "gif", "mp4" })
             {
                 AppSettings.Current.VideoFormat = fmt;
                 int before = LibraryStore.List().Count(i => i.IsVideo);
@@ -577,7 +577,7 @@ namespace RXCapture
                 if (!added) { failed++; continue; }
                 var v = vids[0];
                 var fi = new FileInfo(v.File);
-                bool okExt = v.Ext == fmt && fi.Length > 5000;
+                bool okExt = v.Ext == fmt && fi.Length > (fmt == "avi" ? 5000 : 500);   // a still screen makes tiny GIF/MP4 files (identical frames merge)
                 log.AppendLine((okExt ? "PASS " : "FAIL ") + fmt + " file " + fi.Name + " " + fi.Length + " bytes, duration label " + v.DurationSec + "s");
                 if (!okExt) failed++;
                 if (fmt == "avi")
@@ -587,9 +587,24 @@ namespace RXCapture
                     log.AppendLine((ok ? "PASS " : "FAIL ") + "avi frames = " + n + " (15 fps, ~3 s expected ≥ 30)");
                     if (!ok) failed++;
                 }
+                else if (fmt == "gif")
+                {
+                    using (var im = Image.FromFile(v.File))
+                    {
+                        int n = im.GetFrameCount(FrameDimension.Time);
+                        bool ok = n >= 1;
+                        log.AppendLine((ok ? "PASS " : "FAIL ") + "gif " + im.Width + "x" + im.Height + " frames=" + n);
+                        if (!ok) failed++;
+                    }
+                }
                 else
                 {
-                    using (var im = Image.FromFile(v.File)) log.AppendLine("PASS gif " + im.Width + "x" + im.Height + " frames=" + im.GetFrameCount(FrameDimension.Time));
+                    // ISO base media file: 'ftyp' box first and a 'moov' box somewhere; frame size is 640x360 (even)
+                    byte[] head = File.ReadAllBytes(v.File);
+                    string all = System.Text.Encoding.ASCII.GetString(head);
+                    bool ok = head.Length > 12 && all.Substring(4, 4) == "ftyp" && all.Contains("moov") && all.Contains("avc1");
+                    log.AppendLine((ok ? "PASS " : "FAIL ") + "mp4 container has ftyp/moov/avc1 (H.264)");
+                    if (!ok) failed++;
                 }
                 LibraryStore.Delete(v);
             }

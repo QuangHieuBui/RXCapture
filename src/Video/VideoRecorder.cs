@@ -12,7 +12,7 @@ using System.Windows.Forms;
 
 namespace RXCapture
 {
-    /// <summary>Screen video recording: MJPEG AVI, optionally converted to GIF (built in) or MP4 (needs ffmpeg.exe).</summary>
+    /// <summary>Screen video recording: MJPEG AVI, optionally converted to GIF (built in) or MP4 (H.264).</summary>
     public static class VideoRecorder
     {
         public static bool IsActive;
@@ -59,13 +59,17 @@ namespace RXCapture
                 }
                 else if (fmt == "mp4")
                 {
-                    string ff = FindFfmpeg();
-                    if (ff != null)
+                    string mp4 = Path.ChangeExtension(r.AviPath, ".mp4");
+                    bool done;
+                    using (var wait = new BusyForm(Loc.T("Converting to MP4…")))
                     {
-                        string mp4 = Path.ChangeExtension(r.AviPath, ".mp4");
-                        using (var wait = new BusyForm(Loc.T("Converting to MP4…"))) { wait.Show(); Application.DoEvents(); if (RunFfmpeg(ff, r.AviPath, mp4)) { File.Delete(r.AviPath); path = mp4; } }
+                        wait.Show(); Application.DoEvents();
+                        done = Mp4Writer.Convert(r.AviPath, mp4, r.Fps);                       // Windows' own H.264 encoder
+                        string ff = done ? null : FindFfmpeg();                                // fallback when Windows has none (N editions)
+                        if (!done && ff != null) done = RunFfmpeg(ff, r.AviPath, mp4);
                     }
-                    else App.Balloon(Loc.T("ffmpeg.exe was not found - the video was saved as AVI."));
+                    if (done) { File.Delete(r.AviPath); path = mp4; }
+                    else App.Balloon(Loc.T("MP4 encoding is not available - the video was saved as AVI."));
                 }
                 var item = LibraryStore.AddVideo(path, r.FirstFrame, (int)Math.Round(r.Seconds));
                 App.ShowEditor();

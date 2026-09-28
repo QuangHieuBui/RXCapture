@@ -79,7 +79,7 @@ namespace RXCapture
             Action("Capture saved to the library", "Đã lưu ảnh chụp vào thư viện", d);
             Action("Video saved to the library", "Đã lưu video vào thư viện", d);
             Action("Creating GIF…", "Đang tạo GIF…", d); Action("Converting to MP4…", "Đang chuyển sang MP4…", d);
-            Action("ffmpeg.exe was not found - the video was saved as AVI.", "Không tìm thấy ffmpeg.exe - video được lưu dạng AVI.", d);
+            Action("MP4 encoding is not available - the video was saved as AVI.", "Không mã hóa được MP4 - video được lưu dạng AVI.", d);
             Action("Record / Pause", "Ghi / Tạm dừng", d); Action("Stop and save", "Dừng và lưu", d); Action("Discard", "Hủy bỏ", d); Action("Ready", "Sẵn sàng", d);
             Action("Could not register hotkey(s): ", "Không đăng ký được phím tắt: ", d); Action("Change them in Settings > Hotkeys.", "Hãy đổi trong Cài đặt > Phím tắt.", d);
             Action("A screen capture and image editing tool for Windows.", "Công cụ chụp màn hình và chỉnh sửa ảnh cho Windows.", d);
@@ -113,7 +113,7 @@ namespace RXCapture
             Action("Repeat last region", "Lặp lại vùng trước", d);
             Action("Click a box and press the new combination. Backspace clears it.", "Bấm vào ô rồi nhấn tổ hợp phím mới. Backspace để xóa.", d);
             Action("Frames per second", "Số khung hình/giây", d); Action("Output format", "Định dạng đầu ra", d); Action("GIF maximum width (px)", "Độ rộng GIF tối đa (px)", d);
-            Action("Tip: put ffmpeg.exe next to RXCapture.exe to enable MP4 (H.264) output.", "Mẹo: đặt ffmpeg.exe cạnh RXCapture.exe để xuất MP4 (H.264).", d);
+            Action("MP4 uses the H.264 encoder built into Windows; ffmpeg.exe next to RXCapture.exe is only a fallback.", "MP4 dùng bộ mã hóa H.264 có sẵn của Windows; ffmpeg.exe cạnh RXCapture.exe chỉ là dự phòng.", d);
             Action("Copy image", "Sao chép ảnh", d); Action("Play video", "Phát video", d); Action("Show in folder", "Mở thư mục chứa", d);
             Action("Image copied to clipboard", "Đã sao chép ảnh vào clipboard", d);
             Action("Scroll", "Cuộn", d);
