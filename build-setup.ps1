@@ -67,10 +67,10 @@ if (-not $OutDir -and -not $NoRelease) {
         $hash = (Get-FileHash $out -Algorithm SHA256).Hash
         Set-Content (Join-Path $rel "RXCapture-Setup-$Version.exe.sha256") ("{0} *RXCapture-Setup-{1}.exe" -f $hash, $Version) -Encoding ASCII
         $commit = (& git -C $root rev-parse --short HEAD 2>$null)
-        $dirty = if (& git -C $root status --porcelain 2>$null) { ' (uncommitted changes)' } else { '' }
+        $dirty = if (& git -C $root status --porcelain -- . ':!releases' 2>$null) { ' (uncommitted changes)' } else { '' }
         Set-Content (Join-Path $rel 'BUILD.txt') @(
             "RXCapture $Version",
-            "Built:   " + (Get-Date -Format 'yyyy-MM-dd HH:mm'),
+            ("Built:   " + (Get-Date -Format 'yyyy-MM-dd HH:mm')),
             "Source:  git $commit$dirty",
             "SHA-256: $hash  (RXCapture-Setup-$Version.exe)"
         ) -Encoding UTF8
