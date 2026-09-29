@@ -238,6 +238,54 @@ namespace RXCapture
                 return null;
             });
 
+            Check("MP4 reader/trim: widths that are not a multiple of 16 are not skewed", delegate
+            {
+                // regions such as 1508 x 876 are padded row by row by the decoder; a vertical white bar must stay vertical
+                foreach (int w in new[] { 322, 378, 1508 })
+                {
+                    int h = 182;
+                    string avi = Path.Combine(tmp, "w" + w + ".avi"), mp4 = Path.Combine(tmp, "w" + w + ".mp4"), cut = Path.Combine(tmp, "w" + w + "-cut.mp4");
+                    byte[] jpg;
+                    using (var b = new Bitmap(w, h))
+                    {
+                        using (var g = Graphics.FromImage(b)) { g.Clear(Color.FromArgb(20, 60, 120)); g.FillRectangle(Brushes.White, 100, 0, 12, h); g.FillRectangle(Brushes.Orange, w - 30, 0, 30, h); }
+                        using (var ms = new MemoryStream()) { b.Save(ms, System.Drawing.Imaging.ImageFormat.Jpeg); jpg = ms.ToArray(); }
+                    }
+                    using (var wr = new AviWriter(avi, w, h, 15)) for (int i = 0; i < 20; i++) wr.AddFrame(jpg);
+                    if (!Mp4Writer.Convert(avi, mp4, 15)) return "MP4 encoder unavailable on this Windows";
+                    Func<Bitmap, string> straight = bmp =>
+                    {
+                        foreach (int y in new[] { 4, h / 2, h - 5 })
+                        {
+                            Color bar = bmp.GetPixel(106, y), left = bmp.GetPixel(40, y), edge = bmp.GetPixel(w - 12, y);
+                            if (bar.R < 200 || bar.G < 200 || bar.B < 200) return "row " + y + ": the white bar is not at x=106 (" + bar + ") - frame is skewed";
+                            if (left.R > 90 || left.B < 80) return "row " + y + ": background wrong at x=40 (" + left + ")";
+                            if (edge.R < 200 || edge.B > 90) return "row " + y + ": orange edge not at the right border (" + edge + ")";
+                        }
+                        return null;
+                    };
+                    using (var rd = new Mp4Writer.Reader(mp4))
+                    using (var bmp = new Bitmap(rd.Width, rd.Height, System.Drawing.Imaging.PixelFormat.Format32bppRgb))
+                    {
+                        TimeSpan ts;
+                        if (rd.Width != w || rd.Height != h) return "decoded size " + rd.Width + "x" + rd.Height + ", expected " + w + "x" + h;
+                        if (!rd.ReadFrame(bmp, out ts)) return "width " + w + ": no frame";
+                        string e = straight(bmp); if (e != null) return "width " + w + " (player): " + e;
+                    }
+                    Bitmap first; TimeSpan kept;
+                    if (!Mp4Writer.Trim(mp4, cut, TimeSpan.FromSeconds(0.2), TimeSpan.FromSeconds(1.0), out first, out kept)) return "width " + w + ": trim failed";
+                    using (first) { string e = straight(first); if (e != null) return "width " + w + " (trim first frame): " + e; }
+                    using (var rd = new Mp4Writer.Reader(cut))         // and the trimmed file itself must decode straight too
+                    using (var bmp = new Bitmap(rd.Width, rd.Height, System.Drawing.Imaging.PixelFormat.Format32bppRgb))
+                    {
+                        TimeSpan ts;
+                        if (!rd.ReadFrame(bmp, out ts)) return "width " + w + ": trimmed file has no frame";
+                        string e = straight(bmp); if (e != null) return "width " + w + " (trimmed file): " + e;
+                    }
+                }
+                return null;
+            });
+
             Check("MP4 convert + trim keep the picture upright", delegate
             {
                 // top half red, bottom half blue: a flipped or channel-swapped encoder would be caught here

@@ -49,26 +49,7 @@ namespace RXCapture
                         }
                         else if (bmp.Width != w || bmp.Height != h) continue;   // recordings have a fixed size; ignore strays
 
-                        var data = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppRgb);
-                        try
-                        {
-                            IMFMediaBuffer buf; Check(MFCreateMemoryBuffer(stride * h, out buf));
-                            IntPtr dst; int max, cur; Check(buf.Lock(out dst, out max, out cur));
-                            for (int y = 0; y < h; y++)   // RGB32 in Media Foundation is bottom-up
-                            {
-                                Marshal.Copy(IntPtr.Add(data.Scan0, y * data.Stride), row, 0, stride);
-                                Marshal.Copy(row, 0, IntPtr.Add(dst, (h - 1 - y) * stride), stride);
-                            }
-                            Check(buf.Unlock());
-                            Check(buf.SetCurrentLength(stride * h));
-                            IMFSample sample; Check(MFCreateSample(out sample));
-                            Check(sample.AddBuffer(buf));
-                            Check(sample.SetSampleTime(frameNo * duration));
-                            Check(sample.SetSampleDuration(duration));
-                            Check(writer.WriteSample(0, sample));
-                            Marshal.ReleaseComObject(sample); Marshal.ReleaseComObject(buf);
-                        }
-                        finally { bmp.UnlockBits(data); }
+                        WriteFrame(writer, bmp, row, frameNo * duration, duration);
                         frameNo++;
                     }
                 }
@@ -92,7 +73,8 @@ namespace RXCapture
         static readonly Guid DefaultStride = new Guid("644b4e48-1e02-4516-b0eb-c01ca9d49ac6");
         const int FirstVideoStream = -4, AllStreams = -2, EndOfStream = 2;
 
-        /// <summary>Keeps only [start, end) of a video (MP4 or AVI) and writes it as a new H.264 MP4. Returns the first kept frame in <paramref name="first"/>.</summary>
+        /// <summary>Keeps only [start, end) of a video (MP4 or AVI) and writes it as a new H.264 MP4. Returns the first kept frame in <paramref name="first"/>.
+        /// The frames are decoded by <see cref="Reader"/> (which knows the real row layout) and encoded again like a fresh recording.</summary>
         public static bool Trim(string src, string dst, TimeSpan start, TimeSpan end, out Bitmap first, out TimeSpan kept)
         {
             first = null; kept = TimeSpan.Zero;
@@ -101,44 +83,27 @@ namespace RXCapture
             {
                 if (MFStartup(MfVersion, 0) != 0) return false;
                 started = true;
-                IMFAttributes attrs; Check(MFCreateAttributes(out attrs, 1));
-                Check(attrs.SetUINT32(EnableVideoProcessing, 1));      // lets the reader convert whatever the codec gives us to RGB32
-                IMFSourceReader reader; Check(MFCreateSourceReaderFromURL(src, attrs, out reader));
-                Check(reader.SetStreamSelection(AllStreams, false));
-                Check(reader.SetStreamSelection(FirstVideoStream, true));
-                IMFMediaType want; Check(MFCreateMediaType(out want));
-                Check(want.SetGUID(MajorType, MediaVideo));
-                Check(want.SetGUID(Subtype, FormatRgb32));
-                Check(reader.SetCurrentMediaType(FirstVideoStream, IntPtr.Zero, want));
-                IMFMediaType cur; Check(reader.GetCurrentMediaType(FirstVideoStream, out cur));
-                ulong size, rate;
-                Check(cur.GetUINT64(FrameSize, out size));
-                int w = (int)(size >> 32), h = (int)(size & 0xffffffff);
-                int fps = 15;
-                if (cur.GetUINT64(FrameRate, out rate) == 0 && (uint)(rate & 0xffffffff) != 0) fps = Math.Max(1, (int)Math.Round((double)(rate >> 32) / (uint)(rate & 0xffffffff)));
-                int stride; bool topDown = !(cur.GetUINT32(DefaultStride, out stride) == 0 && stride < 0);   // the reader normally hands out top-down frames
-                long frameDur = 10000000L / fps, s100 = start.Ticks, e100 = end.Ticks;
-                var writer = Open(dst, w, h, fps, topDown);
-                int written = 0;
-                while (true)
+                using (var rd = new Reader(src))
+                using (var frame = new Bitmap(rd.Width, rd.Height, PixelFormat.Format32bppRgb))
                 {
-                    int idx, flags; long ts; IMFSample sample;
-                    Check(reader.ReadSample(FirstVideoStream, 0, out idx, out flags, out ts, out sample));
-                    if ((flags & EndOfStream) != 0) { if (sample != null) Marshal.ReleaseComObject(sample); break; }
-                    if (sample == null) continue;
-                    if (ts >= e100) { Marshal.ReleaseComObject(sample); break; }
-                    if (ts + frameDur <= s100) { Marshal.ReleaseComObject(sample); continue; }
-                    if (first == null) first = FrameToBitmap(sample, w, h, topDown);
-                    Check(sample.SetSampleTime(Math.Max(0, ts - s100)));
-                    Check(sample.SetSampleDuration(frameDur));
-                    Check(writer.WriteSample(0, sample));
-                    Marshal.ReleaseComObject(sample);
-                    written++;
+                    int w = rd.Width, h = rd.Height, fps = rd.Fps;
+                    long frameDur = 10000000L / fps, s100 = start.Ticks, e100 = end.Ticks;
+                    var row = new byte[w * 4];
+                    var writer = Open(dst, w, h, fps);
+                    int written = 0; TimeSpan ts;
+                    while (rd.ReadFrame(frame, out ts))
+                    {
+                        if (ts.Ticks >= e100) break;
+                        if (ts.Ticks + frameDur <= s100) continue;
+                        if (first == null) first = new Bitmap(frame);
+                        WriteFrame(writer, frame, row, Math.Max(0, ts.Ticks - s100), frameDur);
+                        written++;
+                    }
+                    Check(writer.Finalize_());
+                    Marshal.ReleaseComObject(writer);
+                    kept = TimeSpan.FromTicks(written * frameDur);
+                    ok = written > 0;
                 }
-                Check(writer.Finalize_());
-                Marshal.ReleaseComObject(writer); Marshal.ReleaseComObject(reader);
-                kept = TimeSpan.FromTicks(written * frameDur);
-                ok = written > 0;
             }
             catch { ok = false; }
             finally
@@ -149,28 +114,30 @@ namespace RXCapture
             return ok && File.Exists(dst);
         }
 
-        /// <summary>Copies an RGB32 frame into a Bitmap, flipping rows when the frame is bottom-up.</summary>
-        static Bitmap FrameToBitmap(IMFSample sample, int w, int h, bool topDown)
+        /// <summary>Hands one frame to the sink writer. The buffer is tightly packed and bottom-up, which is how RGB32 is described to the writer.</summary>
+        static void WriteFrame(IMFSinkWriter writer, Bitmap bmp, byte[] row, long time, long duration)
         {
-            IMFMediaBuffer buf; Check(sample.ConvertToContiguousBuffer(out buf));
-            IntPtr p; int max, cur; Check(buf.Lock(out p, out max, out cur));
+            int w = bmp.Width, h = bmp.Height, stride = w * 4;
+            var data = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppRgb);
             try
             {
-                var bmp = new Bitmap(w, h, PixelFormat.Format32bppRgb);
-                var data = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.WriteOnly, PixelFormat.Format32bppRgb);
-                try
+                IMFMediaBuffer buf; Check(MFCreateMemoryBuffer(stride * h, out buf));
+                IntPtr dst; int max, cur; Check(buf.Lock(out dst, out max, out cur));
+                for (int y = 0; y < h; y++)
                 {
-                    var row = new byte[w * 4];
-                    for (int y = 0; y < h; y++)
-                    {
-                        Marshal.Copy(IntPtr.Add(p, (topDown ? y : h - 1 - y) * w * 4), row, 0, row.Length);
-                        Marshal.Copy(row, 0, IntPtr.Add(data.Scan0, y * data.Stride), row.Length);
-                    }
+                    Marshal.Copy(IntPtr.Add(data.Scan0, y * data.Stride), row, 0, stride);
+                    Marshal.Copy(row, 0, IntPtr.Add(dst, (h - 1 - y) * stride), stride);
                 }
-                finally { bmp.UnlockBits(data); }
-                return bmp;
+                Check(buf.Unlock());
+                Check(buf.SetCurrentLength(stride * h));
+                IMFSample sample; Check(MFCreateSample(out sample));
+                Check(sample.AddBuffer(buf));
+                Check(sample.SetSampleTime(time));
+                Check(sample.SetSampleDuration(duration));
+                Check(writer.WriteSample(0, sample));
+                Marshal.ReleaseComObject(sample); Marshal.ReleaseComObject(buf);
             }
-            finally { buf.Unlock(); Marshal.ReleaseComObject(buf); }
+            finally { bmp.UnlockBits(data); }
         }
 
         static readonly Guid PdDuration = new Guid("6c990d33-bb8e-477a-8598-0d5d96fcd88a");
@@ -182,9 +149,11 @@ namespace RXCapture
         {
             IMFSourceReader reader;
             bool started, topDown;
+            int srcStride;                              // bytes from one row to the next in the decoded frame (padded, not always Width * 4)
             public int Width { get; private set; }
             public int Height { get; private set; }
             public TimeSpan Duration { get; private set; }
+            public int Fps { get; private set; }         // nominal frame rate (15 when the file does not say)
 
             public Reader(string path)
             {
@@ -204,7 +173,11 @@ namespace RXCapture
                     IMFMediaType cur; Check(reader.GetCurrentMediaType(FirstVideoStream, out cur));
                     ulong size; Check(cur.GetUINT64(FrameSize, out size));
                     Width = (int)(size >> 32); Height = (int)(size & 0xffffffff);
-                    int stride; topDown = !(cur.GetUINT32(DefaultStride, out stride) == 0 && stride < 0);
+                    ulong rate; Fps = 15;
+                    if (cur.GetUINT64(FrameRate, out rate) == 0 && (uint)(rate & 0xffffffff) != 0) Fps = Math.Max(1, (int)Math.Round((double)(rate >> 32) / (uint)(rate & 0xffffffff)));
+                    int stride; bool haveStride = cur.GetUINT32(DefaultStride, out stride) == 0;
+                    topDown = !(haveStride && stride < 0);
+                    srcStride = haveStride && stride != 0 ? Math.Abs(stride) : Width * 4;
                     Duration = ReadDuration();
                 }
                 catch { Dispose(); throw; }
@@ -256,24 +229,45 @@ namespace RXCapture
             void CopyFrame(IMFSample sample, Bitmap dst)
             {
                 IMFMediaBuffer buf; Check(sample.ConvertToContiguousBuffer(out buf));
-                IntPtr p; int max, len; Check(buf.Lock(out p, out max, out len));
+                IMF2DBuffer buf2d = buf as IMF2DBuffer;
+                IntPtr scan0 = IntPtr.Zero, p = IntPtr.Zero; int pitch = 0; bool locked2d = false, locked = false;
                 try
                 {
                     int w = Width, h = Height, rowBytes = w * 4;
-                    if (len < rowBytes * h) return;
+                    // Rows are padded (the width of 1508 becomes 1520 or more), and RGB32 may be bottom-up: ask the buffer where the
+                    // top row is and how far apart rows are. Lock2D returns scan0 = the top row and a pitch that is negative when bottom-up.
+                    if (buf2d != null && buf2d.Lock2D(out scan0, out pitch) == 0) locked2d = true;
+                    else
+                    {
+                        int max, len; Check(buf.Lock(out p, out max, out len)); locked = true;
+                        // The decoder's buffer is allocated for a height (and width) rounded up to a multiple of 16: 1508 x 876 arrives as
+                        // 1520 pixels per row and 880 rows. The type says Width * 4, which is wrong, so work the pitch out from the buffer size.
+                        int row = 0;
+                        foreach (int rows in new[] { (h + 15) & ~15, h, (h + 31) & ~31, (h + 63) & ~63 })
+                            if (len % rows == 0 && len / rows >= rowBytes) { row = len / rows; break; }
+                        if (row == 0) row = srcStride;
+                        if (row < rowBytes || len < row * h) return;
+                        scan0 = topDown ? p : IntPtr.Add(p, (h - 1) * row); pitch = topDown ? row : -row;
+                    }
+                    if (Math.Abs(pitch) < rowBytes) return;
                     var data = dst.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.WriteOnly, PixelFormat.Format32bppRgb);
                     try
                     {
-                        var row = new byte[rowBytes];
+                        var buffer = new byte[rowBytes];
                         for (int y = 0; y < h; y++)
                         {
-                            Marshal.Copy(IntPtr.Add(p, (topDown ? y : h - 1 - y) * rowBytes), row, 0, rowBytes);
-                            Marshal.Copy(row, 0, IntPtr.Add(data.Scan0, y * data.Stride), rowBytes);
+                            Marshal.Copy(IntPtr.Add(scan0, y * pitch), buffer, 0, rowBytes);
+                            Marshal.Copy(buffer, 0, IntPtr.Add(data.Scan0, y * data.Stride), rowBytes);
                         }
                     }
                     finally { dst.UnlockBits(data); }
                 }
-                finally { buf.Unlock(); Marshal.ReleaseComObject(buf); }
+                finally
+                {
+                    if (locked2d) buf2d.Unlock2D();
+                    if (locked) buf.Unlock();
+                    Marshal.ReleaseComObject(buf);
+                }
             }
 
             public void Dispose()
@@ -283,7 +277,7 @@ namespace RXCapture
             }
         }
 
-        static IMFSinkWriter Open(string mp4, int w, int h, int fps, bool topDown = false)
+        static IMFSinkWriter Open(string mp4, int w, int h, int fps)
         {
             IMFSinkWriter writer;
             Check(MFCreateSinkWriterFromURL(mp4, IntPtr.Zero, IntPtr.Zero, out writer));
@@ -306,7 +300,6 @@ namespace RXCapture
             Check(input.SetUINT64(FrameSize, ((ulong)w << 32) | (uint)h));
             Check(input.SetUINT64(FrameRate, ((ulong)fps << 32) | 1u));
             Check(input.SetUINT64(PixelAspect, (1UL << 32) | 1u));
-            if (topDown) Check(input.SetUINT32(DefaultStride, w * 4));   // positive stride = rows run top to bottom
             Check(writer.SetInputMediaType(stream, input, null));
             Check(writer.BeginWriting());
             Marshal.ReleaseComObject(output); Marshal.ReleaseComObject(input);
@@ -414,6 +407,18 @@ namespace RXCapture
             [PreserveSig] int ReadSample(int streamIndex, int controlFlags, out int actualStreamIndex, out int streamFlags, out long timestamp, out IMFSample sample);
             [PreserveSig] int Flush(); [PreserveSig] int GetServiceForStream();
             [PreserveSig] int GetPresentationAttribute(int streamIndex, [In, MarshalAs(UnmanagedType.LPStruct)] Guid key, IntPtr value);
+        }
+
+        [ComImport, Guid("7dc9d5f9-9ed9-44ec-9bbf-0600bb589fbb"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IMF2DBuffer
+        {
+            [PreserveSig] int Lock2D(out IntPtr scanline0, out int pitch);
+            [PreserveSig] int Unlock2D();
+            [PreserveSig] int GetScanline0AndPitch(out IntPtr scanline0, out int pitch);
+            [PreserveSig] int IsContiguousFormat([MarshalAs(UnmanagedType.Bool)] out bool contiguous);
+            [PreserveSig] int GetContiguousLength(out int length);
+            [PreserveSig] int ContiguousCopyTo(IntPtr dest, int destLength);
+            [PreserveSig] int ContiguousCopyFrom(IntPtr src, int srcLength);
         }
     }
 }
