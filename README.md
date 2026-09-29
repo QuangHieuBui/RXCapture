@@ -15,11 +15,11 @@ Dùng `csc.exe` có sẵn của Windows (C# 5) — không cần Visual Studio ha
 
 ## Đóng gói file cài đặt (Setup)
 ```
-powershell -ExecutionPolicy Bypass -File build-setup.ps1 [-Version 1.0.2]
+powershell -ExecutionPolicy Bypass -File build-setup.ps1 [-Version 1.0.3]
 ```
 Tạo `dist\RXCapture-Setup-<phiên bản>.exe` (~0,6 MB, tự chứa toàn bộ ứng dụng; chỉ cần `csc.exe` có sẵn của Windows). Bấm đúp file này để cài: chọn thư mục (mặc định `%LOCALAPPDATA%\Programs\RXCapture`), tùy chọn biểu tượng ở màn hình nền, chạy cùng Windows và chạy ngay sau khi cài. Cài cho tài khoản hiện tại, **không cần quyền quản trị**; có mục trong *Settings > Apps* để gỡ, và `Uninstall.exe` trong thư mục cài (hỏi có xóa luôn cài đặt/thư viện hay không). Dòng lệnh: `/S` (im lặng), `/D=<thư mục>`, `/nodesktop`, `/startup` (chạy cùng Windows), `/launch`; gỡ im lặng: `Uninstall.exe /uninstall /S [/removedata]`. Cài đè lên bản cũ sẽ tự tắt RXCapture đang chạy từ thư mục đó và giữ nguyên dữ liệu.
 
-**Lưu từng phiên bản trên git:** mỗi lần `build-setup.ps1` chạy, bản dựng còn được chép vào `releases<phiên bản>` (file cài đặt, bản portable `.zip` chỉ gồm `RXCapture.exe` + `.config`, `.sha256`, chứng chỉ công khai `.cer`, `BUILD.txt` ghi commit và ngày build). Thư mục này **được commit lên git** để giữ lịch sử và dùng lại bản cũ. Một thư mục phiên bản đã có sẽ không bị ghi đè: muốn build bản mới hãy tăng `-Version` (ví dụ `-Version 1.0.3`); `-Force` mới cho ghi đè, `-NoRelease` để build mà không lưu.
+**Lưu từng phiên bản trên git:** mỗi lần `build-setup.ps1` chạy, bản dựng còn được chép vào `releases<phiên bản>` (file cài đặt, bản portable `.zip` chỉ gồm `RXCapture.exe` + `.config`, `.sha256`, chứng chỉ công khai `.cer`, `BUILD.txt` ghi commit và ngày build). Thư mục này **được commit lên git** để giữ lịch sử và dùng lại bản cũ. Một thư mục phiên bản đã có sẽ không bị ghi đè: muốn build bản mới hãy tăng `-Version` (ví dụ `-Version 1.0.4`); `-Force` mới cho ghi đè, `-NoRelease` để build mà không lưu.
 
 ## Phím tắt toàn cục (đổi được trong Settings > Hotkeys)
 | Phím | Chức năng |
@@ -91,7 +91,7 @@ RXCapture.exe --grab x,y,w,h out.png  # chụp một vùng, không giao diện
 ## Lịch sử phiên bản
 Mỗi lần đóng gói lại file cài đặt, thêm một mục ở đầu danh sách này (số phiên bản lấy từ `build-setup.ps1 -Version`).
 
-### 1.0.3 (chưa đóng gói)
+### 1.0.3
 **Mới**
 - Video MP4 nhẹ hơn khoảng một nửa: mã hóa H.264 theo chế độ chất lượng thay vì tốc độ bit cố định (màn hình tĩnh gần như không tốn dung lượng, chuyển động mới được cấp thêm). Đo trên 4 giây 1280×720: chữ cuộn + kéo cửa sổ 1575 KB → 718 KB, trang tĩnh 762 KB → 394 KB, độ nét vẫn ~35 dB (PSNR).
 - Tốc độ khung hình mặc định **24 fps** (trước là 15; file đã lưu 15 được chuyển sang 24 một lần). Chọn được 24 trong cửa sổ Capture, 5–30 trong Settings > Video.
