@@ -229,16 +229,16 @@ namespace RXCapture
             StartPosition = FormStartPosition.Manual;
             BackColor = Color.FromArgb(37, 37, 40);
             Font = new Font("Segoe UI", 9.5f);
-            Size = new Size(624, 62);
+            Size = new Size(800, 76);
 
-            btnRec.SetBounds(8, 8, 130, 46); btnStop.SetBounds(144, 8, 150, 46); btnCancel.SetBounds(300, 8, 130, 46);
+            btnRec.SetBounds(10, 10, 170, 56); btnStop.SetBounds(186, 10, 220, 56); btnCancel.SetBounds(412, 10, 170, 56);
             Setup(btnRec, "record", Loc.T("Record"), Loc.T("Record / Pause")); Setup(btnStop, "stop", Loc.T("Stop & save"), Loc.T("Stop and save")); Setup(btnCancel, "close", Loc.T("Discard"), Loc.T("Discard"));
             btnStop.Enabled = false;
             btnRec.Click += (s, e) => RecClicked();
             btnStop.Click += (s, e) => StopClicked();
             btnCancel.Click += (s, e) => { cancelled = true; StopWorker(); Close(); };
-            lblTime.SetBounds(440, 0, 178, 62); lblTime.ForeColor = Color.White; lblTime.TextAlign = ContentAlignment.MiddleLeft;
-            lblTime.Font = new Font("Segoe UI", 11f, FontStyle.Bold);
+            lblTime.SetBounds(596, 0, 196, 76); lblTime.ForeColor = Color.White; lblTime.TextAlign = ContentAlignment.MiddleLeft;
+            lblTime.Font = new Font("Segoe UI", 13f, FontStyle.Bold);
             lblTime.Text = Loc.T("Ready") + "  " + region.Width + "×" + region.Height;
             lblTime.MouseDown += (s, e) => { if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); } };   // drag the bar by its label
             lblTime.Cursor = Cursors.SizeAll;
@@ -269,14 +269,16 @@ namespace RXCapture
         {
             b.FlatStyle = FlatStyle.Flat; b.FlatAppearance.BorderSize = 0; b.BackColor = Color.FromArgb(60, 60, 64);
             b.FlatAppearance.MouseOverBackColor = Color.FromArgb(84, 84, 90);
-            b.Font = new Font("Segoe UI", 11f, FontStyle.Bold); b.ForeColor = Color.White; b.UseVisualStyleBackColor = false;
-            b.Image = Icons.Get(icon, 24, true); b.Text = text;
+            b.Font = new Font("Segoe UI", 14f, FontStyle.Bold); b.ForeColor = Color.White; b.UseVisualStyleBackColor = false;
+            b.Image = Icons.Get(icon, 34, true); b.Text = Up(text);
             b.TextImageRelation = TextImageRelation.ImageBeforeText; b.ImageAlign = ContentAlignment.MiddleCenter; b.TextAlign = ContentAlignment.MiddleCenter;
             b.Cursor = Cursors.Hand; b.UseMnemonic = false;   // "Stop & save" must not turn & into a shortcut key
             new ToolTip().SetToolTip(b, tip);
         }
 
-        void SetRec(string icon, string text) { btnRec.Image = Icons.Get(icon, 24, true); btnRec.Text = text; }
+        void SetRec(string icon, string text) { btnRec.Image = Icons.Get(icon, 34, true); btnRec.Text = Up(text); }
+
+        static string Up(string s) { return s == null ? "" : s.ToUpper(); }        // button captions are upper case
 
         protected override bool ShowWithoutActivation { get { return false; } }
         protected override void WndProc(ref Message m) { if (m.Msg == Native.WM_DPICHANGED) return; base.WndProc(ref m); }

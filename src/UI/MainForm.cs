@@ -438,7 +438,7 @@ namespace RXCapture
                 if (it.IsVideo) { App.Editor.ShowVideo(it); App.ShowEditor(); return; }
                 try
                 {
-                    var d = Document.LoadProject(it.File);
+                    var d = LibraryStore.LoadDoc(it);
                     var ed = App.Editor;
                     ed.OpenNew(it, d);
                     App.ShowEditor();

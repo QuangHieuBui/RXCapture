@@ -13,7 +13,8 @@ if (-not (Test-Path "$root\res\app.ico")) { & powershell -NoProfile -ExecutionPo
 
 $src = Get-ChildItem "$root\src" -Recurse -Filter *.cs | ForEach-Object { $_.FullName }
 $refs = 'System.dll', 'System.Core.dll', 'System.Drawing.dll', 'System.Windows.Forms.dll',
-        'System.Xml.dll', 'System.Xml.Linq.dll', 'System.IO.Compression.dll', 'System.IO.Compression.FileSystem.dll'
+        'System.Xml.dll', 'System.Xml.Linq.dll', 'System.IO.Compression.dll', 'System.IO.Compression.FileSystem.dll',
+        'Microsoft.VisualBasic.dll'   # FileSystem.DeleteFile can send files to the Recycle Bin
 
 $args = @('/nologo', '/target:winexe', '/optimize+', '/debug:pdbonly', '/codepage:65001', '/unsafe+', '/warn:3',
           "/out:$out\RXCapture.exe", "/win32manifest:$root\res\app.manifest", "/win32icon:$root\res\app.ico")

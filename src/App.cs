@@ -15,6 +15,7 @@ namespace RXCapture
     public static class App
     {
         public static bool Running;
+        public static bool StartHidden;      // launched with --minimized (by the Windows start-up entry); not stored in the settings
         static EditorForm editor;
         static MainForm main;
         static LibraryForm library;
@@ -32,12 +33,14 @@ namespace RXCapture
         {
             Running = true;
             try { AppIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { AppIcon = SystemIcons.Application; }
-            SettingsForm.MigrateStartupEntry();
+            Startup.Refresh();
             hotkeys = new HotkeyWindow();
             RegisterHotkeys();
             BuildTray();
             main = new MainForm();
-            if (!AppSettings.Current.StartMinimized) main.Show();
+            // started by Windows (--minimized): stay in the tray, unless nothing else (tray icon, widget) would be visible
+            bool hidden = (StartHidden || AppSettings.Current.StartMinimized) && (AppSettings.Current.ShowTray || AppSettings.Current.ShowWidget);
+            if (!hidden) main.Show();
             if (AppSettings.Current.ShowWidget) SetWidgetVisible(true);
             foreach (var a in args)
                 if (File.Exists(a)) Editor.OpenFile(a);
@@ -125,19 +128,14 @@ namespace RXCapture
         {
             tray = new NotifyIcon { Icon = AppIcon, Text = "RXCapture", Visible = AppSettings.Current.ShowTray };
             var m = Theme.Menu();
-            m.Items.Add(Theme.Item("All-in-One", "camera", (s, e) => Capture(CaptureMode.AllInOne)));
-            m.Items.Add(Theme.Item("Region", "region", (s, e) => Capture(CaptureMode.Region)));
-            m.Items.Add(Theme.Item("Window", "window", (s, e) => Capture(CaptureMode.Window)));
-            m.Items.Add(Theme.Item("Full Screen", "fullscreen", (s, e) => Capture(CaptureMode.FullScreen)));
-            m.Items.Add(Theme.Item("Scrolling", "scroll", (s, e) => Capture(CaptureMode.Scrolling)));
-            m.Items.Add(Theme.Item("Freehand", "freehand", (s, e) => Capture(CaptureMode.Freehand)));
-            m.Items.Add(Theme.Item("Video", "video", (s, e) => Capture(CaptureMode.Video)));
-            m.Items.Add(new ToolStripSeparator());
             m.Items.Add(Theme.Item("Capture window", "camera", (s, e) => ShowMain()));
             m.Items.Add(Theme.Item("Capture widget", "camera", (s, e) => SetWidgetVisible(!WidgetVisible)));
             m.Items.Add(Theme.Item("Editor", "pen", (s, e) => ShowEditor()));
             m.Items.Add(Theme.Item("Library", "library", (s, e) => ShowLibrary()));
             m.Items.Add(Theme.Item("Settings…", "settings", (s, e) => ShowSettings()));
+            var startup = Theme.Item("Start with Windows", null, (s, e) => Startup.Set(!Startup.IsEnabled));
+            m.Opening += (s, e) => startup.Checked = Startup.IsEnabled;
+            m.Items.Add(startup);
             m.Items.Add(new ToolStripSeparator());
             m.Items.Add(Theme.Item("Exit", "close", (s, e) => Exit()));
             tray.ContextMenuStrip = m;
@@ -422,7 +420,7 @@ namespace RXCapture
             if (cfg.CopyToClipboard) Exporter.CopyToClipboard(final);
             if (cfg.AutoSaveToFolder)
             {
-                try { string p = cfg.NewFileName(cfg.Format == "" ? "png" : cfg.Format); Exporter.Save(final, p); doc.ExportPath = p; }
+                try { string p = cfg.NewFileName(cfg.Format == "" ? "png" : cfg.Format); Exporter.Save(final, p); doc.ExportPath = p; LibraryStore.SetExport(item, p); }
                 catch { }
             }
             final.Dispose();

@@ -77,6 +77,8 @@ namespace RXCapture
             tray.ItemOpen += OpenLibItem;
             tray.ItemRemove += RemoveFromTray;
             tray.ItemsRemove += RemoveManyFromTray;
+            tray.ItemClose += CloseFromTray;
+            tray.ItemsClose += CloseManyFromTray;
             autosave.Tick += (s, e) => SaveCurrent();
             autosave.Start();
             ribbon.FileMenu = BuildFileMenu;
@@ -125,7 +127,7 @@ namespace RXCapture
             HidePlayer();
             try
             {
-                var d = Document.LoadProject(it.File);
+                var d = LibraryStore.LoadDoc(it);
                 SaveCurrent();
                 item = it; doc = d;
                 doc.Changed += (s, e) => { UpdateStatus(); ribbon.Invalidate(); };
@@ -215,7 +217,20 @@ namespace RXCapture
                     it.File = path; d.ProjectPath = path;
                     LibraryStore.Save(it, d);
                 }
-                else using (var im = Image.FromFile(path)) it = LibraryStore.AddImage(Effects.ToArgb(im), out d);
+                else
+                {
+                    var known = LibraryStore.FindByExport(path);                     // saved from RXCapture and untouched since: continue that editable item
+                    if (known != null)
+                    {
+                        it = known; d = LibraryStore.LoadDoc(known);
+                        if (known.Closed) LibraryStore.SetClosed(new[] { known }, false);       // opening its file brings a closed item back into the list
+                    }
+                    else
+                    {
+                        using (var im = Image.FromFile(path)) it = LibraryStore.AddImage(Effects.ToArgb(im), out d);
+                        d.ExportPath = path; LibraryStore.SetExport(it, path);            // this file is now the main file: Save overwrites it
+                    }
+                }
                 OpenNew(it, d);
                 if (!Visible) Show();
             }
@@ -229,6 +244,8 @@ namespace RXCapture
 
         void UpdateTitle()
         {
+            string linked = doc != null ? doc.ExportPath : (item != null && item.IsVideo ? item.ExportPath : null);
+            if (!string.IsNullOrEmpty(linked)) { Text = "RXCapture Editor - [" + Path.GetFileName(linked) + "]"; return; }      // the saved file is the main file
             DateTime? when = doc != null ? doc.Created : (item != null && item.IsVideo ? (DateTime?)item.Created : null);
             Text = "RXCapture Editor" + (when != null ? " - [" + when.Value.ToString("MMM d, yyyy h:mm:ss tt", CultureInfo.CurrentCulture) + "]" : "");
         }
@@ -1129,14 +1146,24 @@ namespace RXCapture
             {
                 sfd.Filter = label + " (*." + ext + ")|*." + ext;
                 sfd.DefaultExt = ext; sfd.AddExtension = true; sfd.OverwritePrompt = true;
-                Directory.CreateDirectory(cfg.SaveFolder);
-                sfd.InitialDirectory = cfg.SaveFolder;
-                sfd.FileName = Path.GetFileNameWithoutExtension(cfg.NewFileName(ext));
+                string cur = it.ExportPath;
+                if (!string.IsNullOrEmpty(cur) && Directory.Exists(Path.GetDirectoryName(cur)))
+                {
+                    sfd.InitialDirectory = Path.GetDirectoryName(cur);
+                    sfd.FileName = Path.GetFileNameWithoutExtension(cur);
+                }
+                else
+                {
+                    Directory.CreateDirectory(cfg.SaveFolder);
+                    sfd.InitialDirectory = cfg.SaveFolder;
+                    sfd.FileName = Path.GetFileNameWithoutExtension(cfg.NewFileName(ext));
+                }
                 if (sfd.ShowDialog(this) != DialogResult.OK) return;
                 try
                 {
                     string dest = sfd.FileName;
                     CopyVideoTo(it, dest);
+                    LibraryStore.SetExport(it, dest); UpdateTitle();          // this file is now the main file
                     cfg.SaveFolder = Path.GetDirectoryName(dest);
                     status.Hint(Loc.T("Saved") + ": " + dest);
                 }
@@ -1153,10 +1180,21 @@ namespace RXCapture
             using (var sfd = new SaveFileDialog())
             {
                 sfd.Filter = Exporter.FileFilter;
-                sfd.FilterIndex = Exporter.FilterIndexFor(cfg.Format);
-                Directory.CreateDirectory(cfg.SaveFolder);
-                sfd.InitialDirectory = cfg.SaveFolder;
-                sfd.FileName = Path.GetFileNameWithoutExtension(cfg.NewFileName("png"));
+                string cur = doc.ExportPath;
+                if (!string.IsNullOrEmpty(cur) && Directory.Exists(Path.GetDirectoryName(cur)))
+                {
+                    // the file already saved is the main file: offer its folder, name and format again instead of a new timestamped name
+                    sfd.InitialDirectory = Path.GetDirectoryName(cur);
+                    sfd.FileName = Path.GetFileNameWithoutExtension(cur);
+                    sfd.FilterIndex = Exporter.FilterIndexFor(Path.GetExtension(cur).TrimStart('.'));
+                }
+                else
+                {
+                    sfd.FilterIndex = Exporter.FilterIndexFor(cfg.Format);
+                    Directory.CreateDirectory(cfg.SaveFolder);
+                    sfd.InitialDirectory = cfg.SaveFolder;
+                    sfd.FileName = Path.GetFileNameWithoutExtension(cfg.NewFileName("png"));
+                }
                 sfd.AddExtension = true;
                 sfd.OverwritePrompt = true;
                 if (sfd.ShowDialog(this) != DialogResult.OK) return;
@@ -1171,7 +1209,7 @@ namespace RXCapture
             try
             {
                 using (var b = doc.Render()) Exporter.Save(b, path);
-                doc.ExportPath = path;
+                doc.ExportPath = path; LibraryStore.SetExport(item, path); UpdateTitle();
                 AppSettings.Current.SaveFolder = Path.GetDirectoryName(path);
                 status.Hint(Loc.T("Saved") + ": " + path);
             }
@@ -1180,7 +1218,17 @@ namespace RXCapture
 
         void SaveQuick()
         {
-            if (VideoShown) { SaveVideoAs(); return; }
+            if (VideoShown)
+            {
+                var v = item;
+                if (!string.IsNullOrEmpty(v.ExportPath) && Directory.Exists(Path.GetDirectoryName(v.ExportPath)))
+                {
+                    try { CopyVideoTo(v, v.ExportPath); status.Hint(Loc.T("Saved") + ": " + v.ExportPath); }
+                    catch (Exception ex) { MessageBox.Show(this, ex.Message, "RXCapture", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+                }
+                else SaveVideoAs();
+                return;
+            }
             if (doc == null) return;
             canvas.CommitEdit();
             if (doc.ExportPath != null && Directory.Exists(Path.GetDirectoryName(doc.ExportPath))) WriteExport(doc.ExportPath);
@@ -1215,19 +1263,25 @@ namespace RXCapture
         void DeleteCurrent()
         {
             if (item == null) return;
-            if (MessageBox.Show(this, Loc.T("Delete this capture from the library?"), "RXCapture", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+            if (!ThumbGrid.ConfirmDelete(this)) return;          // asks, defaults to "No", and the files go to the Recycle Bin
             var old = item; item = null; doc = null;
-            LibraryStore.Delete(old);
+            LibraryStore.Delete(old, true);
+            ShowNextAfterRemoval();
+        }
+
+        /// <summary>After the open item was closed or deleted: show the newest image that is still listed, or an empty canvas.</summary>
+        void ShowNextAfterRemoval()
+        {
             var next = LibraryStore.List().FirstOrDefault(i => !i.IsVideo);
             if (next != null) OpenLibItem(next);
             else { canvas.SetDocument(null); UpdateTitle(); UpdateStatus(); ribbon.Invalidate(); }
         }
 
-        // X button / menu in the library tray: the open item goes through DeleteCurrent so the canvas or player moves on cleanly
+        // right-click > Delete in the library tray: the open item goes through DeleteCurrent so the canvas or player moves on cleanly
         void RemoveFromTray(LibItem it)
         {
             if (item != null && item.Id == it.Id) DeleteCurrent();
-            else if (ThumbGrid.ConfirmDelete(this)) LibraryStore.Delete(it);
+            else if (ThumbGrid.ConfirmDelete(this)) LibraryStore.Delete(it, true);
         }
 
         // several ticked thumbnails deleted at once (the tray has already asked for confirmation)
@@ -1235,11 +1289,23 @@ namespace RXCapture
         {
             bool currentGone = item != null && list.Exists(i => i.Id == item.Id);
             if (currentGone) { player.Stop(); player.Visible = false; item = null; doc = null; }
-            LibraryStore.DeleteMany(list);
-            if (!currentGone) return;
-            var next = LibraryStore.List().FirstOrDefault(i => !i.IsVideo);
-            if (next != null) OpenLibItem(next);
-            else { canvas.SetDocument(null); UpdateTitle(); UpdateStatus(); ribbon.Invalidate(); }
+            LibraryStore.DeleteMany(list, true);
+            if (currentGone) ShowNextAfterRemoval();
+        }
+
+        // X button / right-click > Close: the item leaves the list but stays in the library (edits are saved first), nothing is deleted
+        void CloseFromTray(LibItem it) { CloseManyFromTray(new List<LibItem> { it }); }
+
+        void CloseManyFromTray(List<LibItem> list)
+        {
+            bool currentGone = item != null && list.Exists(i => i.Id == item.Id);
+            if (currentGone)
+            {
+                SaveCurrent();                                                    // keep any edits: a closed item can be restored
+                player.Stop(); player.Visible = false; item = null; doc = null;
+            }
+            LibraryStore.SetClosed(list, true);
+            if (currentGone) ShowNextAfterRemoval();
         }
 
         void DoResize() { int w, h; if (Dlg.Resize(this, doc, out w, out h)) { doc.ResizeImage(w, h); canvas.ZoomFit(false); } }

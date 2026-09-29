@@ -23,7 +23,7 @@ namespace RXCapture
         public abstract void Paint(Graphics g, float s, bool hover, bool down);
         public virtual bool HandleClick(Ribbon r, Point p) { return false; }
 
-        protected static readonly Font F = new Font("Segoe UI", 10.5f);
+        protected static readonly Font F = new Font("Segoe UI", 9.5f);
 
         protected static void Arrow(Graphics g, float cx, float cy, float s, Color c)
         {
@@ -54,7 +54,7 @@ namespace RXCapture
         {
             switch (Style)
             {
-                case BtnStyle.Tool: return (int)(34 * s);
+                case BtnStyle.Tool: return (int)(38 * s);
                 case BtnStyle.Icon: return (int)(28 * s);
                 case BtnStyle.Big:
                     {
@@ -87,13 +87,13 @@ namespace RXCapture
                 case BtnStyle.Tool:
                 case BtnStyle.Icon:
                     {
-                        int isz = (int)((Style == BtnStyle.Tool ? 24 : 18) * s);
+                        int isz = (int)((Style == BtnStyle.Tool ? 26 : 18) * s);
                         DrawIcon(g, Icon, isz, new Rectangle(r.X + (r.Width - isz) / 2, r.Y + (r.Height - isz) / 2, isz, isz), en);
                         break;
                     }
                 case BtnStyle.Big:
                     {
-                        int isz = (int)(32 * s);
+                        int isz = (int)(28 * s);
                         DrawIcon(g, Icon, isz, new Rectangle(r.X + (r.Width - isz) / 2, r.Y + (int)(4 * s), isz, isz), en);
                         var tr = new Rectangle(r.X, r.Y + (int)(4 * s) + isz + (int)(1 * s), r.Width, r.Height - isz - (int)(6 * s));
                         string lbl = Label;
@@ -238,8 +238,8 @@ namespace RXCapture
         bool layoutDirty = true;
         readonly List<RItem> laidOut = new List<RItem>();
         string lastTip;
-        static readonly Font TabFont = new Font("Segoe UI", 10.5f);
-        static readonly Font GroupFont = new Font("Segoe UI", 9.5f);
+        static readonly Font TabFont = new Font("Segoe UI", 9.5f);
+        static readonly Font GroupFont = new Font("Segoe UI", 8.5f);
         public const float UiZoom = 1.2f;                // the whole toolbar is drawn 20% larger than the DPI scale alone
 
         public Ribbon()
@@ -251,8 +251,8 @@ namespace RXCapture
         }
 
         float S { get { return Theme.Scale(this) * UiZoom; } }
-        int TabH { get { return (int)(27 * S); } }
-        int ContentH { get { return (int)(96 * S); } }
+        int TabH { get { return (int)(25 * S); } }
+        int ContentH { get { return (int)(88 * S); } }
 
         protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); UpdateHeight(); }
         protected override void OnDpiChangedAfterParent(EventArgs e) { base.OnDpiChangedAfterParent(e); UpdateHeight(); Relayout(); }
@@ -284,7 +284,7 @@ namespace RXCapture
             var tab = Tabs[Active];
             if (tab.IsFile) tab = Tabs[Math.Min(1, Tabs.Count - 1)];
             int gx = (int)(4 * s), gy = th + (int)(3 * s);
-            int labelH = (int)(18 * s), innerH = ContentH - (int)(6 * s) - labelH;
+            int labelH = (int)(16 * s), innerH = ContentH - (int)(6 * s) - labelH;
             foreach (var grp in tab.Groups)
             {
                 if (!grp.IsVisible) { grp.Bounds = Rectangle.Empty; continue; }

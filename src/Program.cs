@@ -53,7 +53,7 @@ namespace RXCapture
                 bool minimized = false;
                 var rest = new System.Collections.Generic.List<string>();
                 foreach (var a in args) { if (a == "--minimized") minimized = true; else rest.Add(a); }
-                if (minimized) AppSettings.Current.StartMinimized = true;
+                if (minimized) App.StartHidden = true;
 
                 App.Start(rest.FindAll(a => !a.StartsWith("--")).ToArray());
                 foreach (var cmd in CommandsFrom(rest.ToArray())) App.HandleCommand(cmd);

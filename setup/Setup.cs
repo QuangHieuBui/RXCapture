@@ -62,7 +62,7 @@ namespace RXCaptureSetup
             string dir = ArgValue(args, "/D=") ?? DefaultDir;
             if (silent)
             {
-                try { Install(dir, !Has(args, "/nodesktop")); if (Has(args, "/launch")) Launch(dir); return 0; }
+                try { Install(dir, !Has(args, "/nodesktop"), Has(args, "/startup") ? true : (bool?)null); if (Has(args, "/launch")) Launch(dir); return 0; }
                 catch (Exception ex) { Console.Error.WriteLine(ex.Message); return 1; }
             }
             Application.Run(new SetupForm(dir));
@@ -71,7 +71,8 @@ namespace RXCaptureSetup
 
         // ------------------------------------------------------------------ install
 
-        internal static string Install(string dir, bool desktopShortcut)
+        /// <param name="startWithWindows">true: start with Windows, false: do not, null: leave the current choice alone.</param>
+        internal static string Install(string dir, bool desktopShortcut, bool? startWithWindows)
         {
             dir = Path.GetFullPath(dir.Trim().Trim('"'));
             if (Path.GetPathRoot(dir).Equals(dir, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException(T("Please choose a folder, not a whole drive.", "Hãy chọn một thư mục, không phải cả ổ đĩa."));
@@ -98,6 +99,7 @@ namespace RXCaptureSetup
             MakeShortcut(StartMenuLink, exe, dir, T("Screen capture and image editor", "Chụp màn hình và chỉnh sửa ảnh"));
             if (desktopShortcut) MakeShortcut(DesktopLink, exe, dir, T("Screen capture and image editor", "Chụp màn hình và chỉnh sửa ảnh"));
             else TryDelete(DesktopLink);
+            if (startWithWindows.HasValue) SetStartup(exe, startWithWindows.Value);
 
             long bytes = 0;
             foreach (var f in Directory.GetFiles(dir, "*", SearchOption.AllDirectories)) bytes += new FileInfo(f).Length;
@@ -115,6 +117,24 @@ namespace RXCaptureSetup
                 k.SetValue("NoRepair", 1, RegistryValueKind.DWord);
             }
             return exe;
+        }
+
+        internal static bool IsStartupOn()
+        {
+            try { using (var k = Registry.CurrentUser.OpenSubKey(RunKey)) return k != null && k.GetValue(AppName) != null; } catch { return false; }
+        }
+
+        static void SetStartup(string exe, bool on)
+        {
+            try
+            {
+                using (var k = Registry.CurrentUser.CreateSubKey(RunKey))
+                {
+                    if (on) k.SetValue(AppName, "\"" + exe + "\" --minimized");
+                    else k.DeleteValue(AppName, false);
+                }
+            }
+            catch { }   // start-up is optional: never fail the installation over it
         }
 
         internal static void Launch(string dir)
@@ -227,7 +247,7 @@ namespace RXCaptureSetup
     {
         readonly TextBox txtDir = new TextBox();
         readonly Button btnBrowse = new Button(), btnInstall = new Button(), btnCancel = new Button();
-        readonly CheckBox chkDesktop = new CheckBox(), chkLaunch = new CheckBox();
+        readonly CheckBox chkDesktop = new CheckBox(), chkStartup = new CheckBox(), chkLaunch = new CheckBox();
         readonly Label lblTitle = new Label(), lblSub = new Label(), lblDir = new Label(), lblNote = new Label();
         string installedDir;
 
@@ -240,7 +260,7 @@ namespace RXCaptureSetup
             Text = "RXCapture " + Program.Version + " - " + T("Setup", "Cài đặt");
             FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false; MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(560, 372);
+            ClientSize = new Size(560, 402);
             try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
             var header = new Panel { Dock = DockStyle.Top, Height = 92, BackColor = Color.FromArgb(37, 37, 40) };
@@ -262,16 +282,17 @@ namespace RXCaptureSetup
             };
 
             chkDesktop.Text = T("Create a desktop shortcut", "Tạo biểu tượng ở màn hình nền"); chkDesktop.Checked = true; chkDesktop.AutoSize = true; chkDesktop.Location = new Point(22, 188);
-            chkLaunch.Text = T("Start RXCapture when setup finishes", "Chạy RXCapture khi cài đặt xong"); chkLaunch.Checked = true; chkLaunch.AutoSize = true; chkLaunch.Location = new Point(22, 218);
+            chkLaunch.Text = T("Start RXCapture when setup finishes", "Chạy RXCapture khi cài đặt xong"); chkLaunch.Checked = true; chkLaunch.AutoSize = true; chkLaunch.Location = new Point(22, 248);
+            chkStartup.Text = T("Start RXCapture when Windows starts", "Chạy RXCapture cùng Windows"); chkStartup.Checked = Program.IsStartupOn(); chkStartup.AutoSize = true; chkStartup.Location = new Point(22, 218);
             lblNote.Text = T("Installs for the current user only - no administrator rights needed. A Start menu shortcut is always created. Your captures and settings are kept when you update or uninstall (uninstall asks first).",
                              "Chỉ cài cho tài khoản hiện tại - không cần quyền quản trị. Luôn có biểu tượng trong menu Start. Ảnh chụp và cài đặt của bạn được giữ khi cập nhật hoặc gỡ (khi gỡ sẽ hỏi trước).");
-            lblNote.ForeColor = Color.FromArgb(90, 90, 95); lblNote.AutoSize = false; lblNote.Bounds = new Rectangle(22, 254, 516, 54);
+            lblNote.ForeColor = Color.FromArgb(90, 90, 95); lblNote.AutoSize = false; lblNote.Bounds = new Rectangle(22, 284, 516, 54);
 
-            btnInstall.Text = T("Install", "Cài đặt"); btnInstall.Bounds = new Rectangle(340, 322, 96, 34); btnInstall.Click += (s, e) => DoInstall();
-            btnCancel.Text = T("Cancel", "Hủy"); btnCancel.Bounds = new Rectangle(442, 322, 96, 34); btnCancel.Click += (s, e) => Close();
+            btnInstall.Text = T("Install", "Cài đặt"); btnInstall.Bounds = new Rectangle(340, 352, 96, 34); btnInstall.Click += (s, e) => DoInstall();
+            btnCancel.Text = T("Cancel", "Hủy"); btnCancel.Bounds = new Rectangle(442, 352, 96, 34); btnCancel.Click += (s, e) => Close();
             AcceptButton = btnInstall; CancelButton = btnCancel;
 
-            Controls.AddRange(new Control[] { header, lblDir, txtDir, btnBrowse, chkDesktop, chkLaunch, lblNote, btnInstall, btnCancel });
+            Controls.AddRange(new Control[] { header, lblDir, txtDir, btnBrowse, chkDesktop, chkStartup, chkLaunch, lblNote, btnInstall, btnCancel });
         }
 
         void DoInstall()
@@ -281,11 +302,11 @@ namespace RXCaptureSetup
             try
             {
                 Application.DoEvents();
-                Program.Install(txtDir.Text, chkDesktop.Checked);
+                Program.Install(txtDir.Text, chkDesktop.Checked, chkStartup.Checked);
                 installedDir = Path.GetFullPath(txtDir.Text.Trim().Trim('"'));
                 lblTitle.Text = T("RXCapture is installed", "Đã cài xong RXCapture");
                 lblSub.Text = installedDir;
-                txtDir.Visible = btnBrowse.Visible = lblDir.Visible = chkDesktop.Visible = false;
+                txtDir.Visible = btnBrowse.Visible = lblDir.Visible = chkDesktop.Visible = chkStartup.Visible = false;
                 lblNote.Text = T("Press Print Screen to capture. RXCapture lives in the system tray; open Settings there to change hotkeys and options.",
                                  "Nhấn Print Screen để chụp. RXCapture nằm ở khay hệ thống; mở Settings ở đó để đổi phím tắt và tùy chọn.");
                 btnInstall.Text = T("Finish", "Hoàn tất"); btnCancel.Visible = false;
@@ -300,7 +321,7 @@ namespace RXCaptureSetup
 
         void SetBusy(bool busy)
         {
-            btnInstall.Enabled = btnCancel.Enabled = btnBrowse.Enabled = txtDir.Enabled = chkDesktop.Enabled = chkLaunch.Enabled = !busy;
+            btnInstall.Enabled = btnCancel.Enabled = btnBrowse.Enabled = txtDir.Enabled = chkDesktop.Enabled = chkStartup.Enabled = chkLaunch.Enabled = !busy;
             Cursor = busy ? Cursors.WaitCursor : Cursors.Default;
         }
     }

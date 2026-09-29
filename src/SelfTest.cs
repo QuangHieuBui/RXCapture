@@ -475,7 +475,112 @@ namespace RXCapture
                 return null;
             });
 
-            Check("library tray: X button asks to delete, the thumbnail body opens", delegate
+            Check("start with Windows: on/off, moved exe is re-pointed, other copies do not take it over", delegate
+            {
+                bool before = Startup.IsEnabled;
+                string oldCmd = null;
+                using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run")) { if (k != null) oldCmd = k.GetValue("RXCapture") as string; }
+                try
+                {
+                    if (Startup.TargetOf("\"C:\\Program Files\\A B\\x.exe\" --minimized") != "C:\\Program Files\\A B\\x.exe" || Startup.TargetOf("C:\\a\\b.exe --minimized") != "C:\\a\\b.exe") return "command parsing";
+                    Startup.Set(true);
+                    if (!Startup.IsEnabled) return "not enabled after Set(true)";
+                    Startup.Refresh();
+                    if (!Startup.IsEnabled) return "Refresh removed the entry";
+                    Startup.Set(false);
+                    if (Startup.IsEnabled) return "still enabled after Set(false)";
+                    Startup.Refresh();
+                    if (Startup.IsEnabled) return "Refresh created an entry that was off";
+                    using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true))
+                    {
+                        k.SetValue("RXCapture", "\"" + Path.Combine(Path.GetTempPath(), "gone-" + Guid.NewGuid().ToString("N") + ".exe") + "\" --minimized");
+                        Startup.Refresh();
+                        string v = (string)k.GetValue("RXCapture");
+                        if (Startup.TargetOf(v) != Application.ExecutablePath) return "entry pointing to a missing exe was not re-pointed: " + v;
+                        k.SetValue("RXCapture", "\"" + Environment.GetEnvironmentVariable("ComSpec") + "\" --minimized");
+                        Startup.Refresh();
+                        if (Startup.TargetOf((string)k.GetValue("RXCapture")) != Environment.GetEnvironmentVariable("ComSpec")) return "an entry to an existing exe was overwritten";
+                    }
+                    return null;
+                }
+                finally
+                {
+                    using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true))
+                    {
+                        if (k != null) { if (before && oldCmd != null) k.SetValue("RXCapture", oldCmd); else k.DeleteValue("RXCapture", false); }
+                    }
+                }
+            });
+
+            Check("saved file becomes the item's main file (remembered, found again on open)", delegate
+            {
+                string file = Path.Combine(tmp, "main-file.png"), vfile = Path.Combine(tmp, "sv2.avi");
+                LibItem it = null, vit = null;
+                try
+                {
+                    using (var s = Sample(200, 120))
+                    {
+                        Document d; it = LibraryStore.AddImage(s, out d);
+                        Exporter.Save(s, file);
+                    }
+                    LibraryStore.SetExport(it, file);
+                    var again = LibraryStore.List().Find(x => x.Id == it.Id);
+                    if (again == null || again.ExportPath == null || !string.Equals(again.ExportPath, Path.GetFullPath(file), StringComparison.OrdinalIgnoreCase)) return "the saved path was not remembered after a reload";
+                    if (LibraryStore.LoadDoc(again).ExportPath != again.ExportPath) return "reopening the item lost the link to its file";
+                    var found = LibraryStore.FindByExport(file);
+                    if (found == null || found.Id != it.Id) return "opening the saved file did not find its own item";
+                    File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddMinutes(5));           // somebody else changed the file
+                    if (LibraryStore.FindByExport(file) != null) return "a file changed elsewhere still matched the old item";
+
+                    // a video keeps its duration next to the link
+                    byte[] jpg; using (var b = new Bitmap(160, 90)) using (var ms = new MemoryStream()) { b.Save(ms, System.Drawing.Imaging.ImageFormat.Jpeg); jpg = ms.ToArray(); }
+                    using (var w = new AviWriter(vfile, 160, 90, 10)) for (int i = 0; i < 10; i++) w.AddFrame(jpg);
+                    using (var fb = new Bitmap(160, 90)) vit = LibraryStore.AddVideo(vfile, fb, 7);
+                    string vdest = Path.Combine(tmp, "video-main.avi");
+                    LibraryStore.SetExport(vit, vdest);
+                    var v2 = LibraryStore.List().Find(x => x.Id == vit.Id);
+                    if (v2 == null || v2.DurationSec != 7 || v2.ExportPath == null) return "video lost its duration or its saved path (dur " + (v2 == null ? -1 : v2.DurationSec) + ")";
+                }
+                finally
+                {
+                    if (it != null) LibraryStore.Delete(it);
+                    if (vit != null) LibraryStore.Delete(vit);
+                    try { File.Delete(file); } catch { }
+                }
+                return null;
+            });
+
+            Check("Save overwrites the main file (no dialog, no second file) and the title shows its name", delegate
+            {
+                string dir = Path.Combine(tmp, "savetest"); Directory.CreateDirectory(dir);
+                foreach (var old in Directory.GetFiles(dir)) File.Delete(old);
+                string file = Path.Combine(dir, "picture-one.png");
+                LibItem it = null;
+                try
+                {
+                    Document d;
+                    using (var s = Sample(200, 120)) it = LibraryStore.AddImage(s, out d);
+                    using (var ed = new EditorForm())
+                    {
+                        var h = ed.Handle;
+                        var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                        ed.OpenNew(it, d);
+                        typeof(EditorForm).GetMethod("WriteExport", flags).Invoke(ed, new object[] { file });            // what Save As does after the dialog
+                        if (ed.Text.IndexOf("picture-one.png", StringComparison.OrdinalIgnoreCase) < 0) return "the title does not show the saved file: " + ed.Text;
+                        File.SetLastWriteTimeUtc(file, new DateTime(2001, 1, 1, 0, 0, 0, DateTimeKind.Utc));               // so a rewrite is visible
+                        d.ResizeImage(100, 60);                                                                            // edit the picture
+                        typeof(EditorForm).GetMethod("SaveQuick", flags).Invoke(ed, null);                                 // Ctrl+S: must not ask for a name
+                    }
+                    var files = Directory.GetFiles(dir);
+                    if (files.Length != 1) return "Save created " + files.Length + " files instead of overwriting the one";
+                    if (File.GetLastWriteTimeUtc(file).Year < 2020) return "Save did not rewrite the main file";
+                    using (var im = Image.FromFile(file)) if (im.Width != 100 || im.Height != 60) return "the saved file does not hold the edited picture (" + im.Width + "x" + im.Height + ")";
+                }
+                finally { if (it != null) LibraryStore.Delete(it); }
+                return null;
+            });
+
+            Check("library tray: X button closes (never deletes), the thumbnail body opens", delegate
             {
                 using (var s = Sample(200, 120))
                 {
@@ -485,20 +590,50 @@ namespace RXCapture
                         using (var grid = new ThumbGrid { Size = new Size(600, 120) })
                         {
                             var h = grid.Handle;   // creates the handle, which loads the items
-                            LibItem removed = null, opened = null;
+                            LibItem closed = null, removed = null, opened = null;
+                            grid.ItemClose += x => closed = x;
                             grid.ItemRemove += x => removed = x;
                             grid.ItemOpen += x => opened = x;
                             var up = typeof(Control).GetMethod("OnMouseUp", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
                             Action<int, int> click = (x, y) => up.Invoke(grid, new object[] { new MouseEventArgs(MouseButtons.Left, 1, x, y, 0) });
                             float sc = Theme.Scale(grid);
                             click((int)(118 * sc), (int)(14 * sc));            // inside the X of the first cell
-                            if (removed == null) return "clicking X did not request a delete";
+                            if (closed == null) return "clicking X did not request a close";
+                            if (removed != null) return "clicking X asked to DELETE the item";
                             if (opened != null) return "clicking X also opened the item";
                             click((int)(60 * sc), (int)(45 * sc));             // middle of the first cell
                             if (opened == null) return "clicking the thumbnail did not open it";
                         }
                     }
                     finally { LibraryStore.Delete(it); }
+                }
+                return null;
+            });
+
+            Check("closing hides items without deleting them; restoring and a rebuilt thumbnail bring them back", delegate
+            {
+                LibItem a = null, b = null;
+                try
+                {
+                    Document d;
+                    using (var s = Sample(160, 100)) a = LibraryStore.AddImage(s, out d);
+                    using (var s = Sample(170, 100)) b = LibraryStore.AddImage(s, out d);
+                    LibraryStore.SetClosed(new[] { a }, true);
+                    if (LibraryStore.List().Exists(x => x.Id == a.Id)) return "a closed item is still listed";
+                    if (!LibraryStore.List().Exists(x => x.Id == b.Id)) return "closing one item hid another";
+                    if (!File.Exists(a.File)) return "closing deleted the project file";
+                    if (!LibraryStore.List(true).Exists(x => x.Id == a.Id && x.Closed)) return "the closed item is not kept in the full list";
+                    LibraryStore.RestoreClosed();
+                    if (!LibraryStore.List().Exists(x => x.Id == a.Id)) return "Restore closed items did not bring it back";
+                    // a project whose thumbnail is gone (restored from the Recycle Bin, say) is listed again with a rebuilt thumbnail
+                    File.Delete(b.ThumbFile);
+                    var again = LibraryStore.List().Find(x => x.Id == b.Id);
+                    if (again == null || !File.Exists(b.ThumbFile)) return "an item without a thumbnail was not rebuilt";
+                }
+                finally
+                {
+                    if (a != null) LibraryStore.Delete(a);
+                    if (b != null) LibraryStore.Delete(b);
                 }
                 return null;
             });
@@ -637,7 +772,9 @@ namespace RXCapture
                                     }
                             Mp4Writer.Convert(avi, mp4, 15); File.Delete(avi);
                             LibItem it; using (var fb = new Bitmap(640, 360)) it = LibraryStore.AddVideo(mp4, fb, 3);
-                            demoVideo = it; Application.DoEvents(); ed.ShowVideo(it);   // DoEvents: let the tray reload so the new item can be selected
+                            demoVideo = it;
+                            if (Array.IndexOf(args, "saved") >= 0) LibraryStore.SetExport(it, Path.Combine(Path.GetTempPath(), "Bao_cao_quy_III_ban_cuoi_v2.mp4"));   // a saved item shows its file name
+                            Application.DoEvents(); ed.ShowVideo(it);   // DoEvents: let the tray reload so the new item can be selected
                             if (Array.IndexOf(args, "select") >= 0)
                             {
                                 // multi-select look: tick the first three cells
@@ -681,6 +818,21 @@ namespace RXCapture
                         ov.ShowDialog();
                         return 0;
                     }
+                case "watermark":
+                    {
+                        var src = new Bitmap(600, 400);
+                        using (var g = Graphics.FromImage(src)) g.Clear(Color.SteelBlue);
+                        var d = new ParamDialog("Watermark", src);
+                        d.AddText("Text", "RXCapture"); d.AddNumber("Font size (px)", 6, 400, 32); d.AddCheck("Bold", true); d.AddColor("Colour", Color.White);
+                        d.AddSlider("Opacity %", 5, 100, 60);
+                        var pos = d.AddCombo("Position", new[] { "Top left", "Top centre", "Top right", "Middle left", "Centre", "Middle right", "Bottom left", "Bottom centre", "Bottom right" }, 5);
+                        d.AddNumber("Margin (px)", 0, 500, 16);
+                        if (args.Length > 3 && args[3] == "open") prepare = delegate { pos.Focus(); pos.DroppedDown = true; };
+                        d.PreviewFn = (p, k) => (Bitmap)p.Clone();
+                        d.Finish(430);
+                        f = d;
+                        break;
+                    }
                 case "settings": f = new SettingsForm(); break;
                 case "defaults": f = new DefaultsForm(); break;
                 case "library": f = new LibraryForm(); break;
@@ -699,6 +851,7 @@ namespace RXCapture
                 try
                 {
                     var r = f.Bounds;
+                    if (prepare != null && what == "watermark") r.Height += 120;              // an open drop-down list reaches below the dialog
                     using (var b = ScreenGrabber.Grab(r)) b.Save(outPath, ImageFormat.Png);
                 }
                 catch (Exception ex) { File.WriteAllText(outPath + ".err", ex.ToString()); }

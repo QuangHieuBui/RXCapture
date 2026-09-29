@@ -72,6 +72,7 @@ namespace RXCapture
             Color ink = light ? Color.White : Ink;
             Color acc = light ? Color.FromArgb(96, 176, 255) : Accent;
             using (var pen = P(ink, 2.3f))
+            using (var tp = P(ink, 1.5f))
             using (var accPen = P(acc, 2.5f))
             using (var inkB = new SolidBrush(ink))
             using (var accB = new SolidBrush(acc))
@@ -79,104 +80,78 @@ namespace RXCapture
                 Color dark = Color.FromArgb(28, 28, 32), blue = Color.FromArgb(44, 132, 240), coral = Color.FromArgb(255, 96, 78), gold = Color.FromArgb(255, 196, 40);
                 switch (n)
                 {
+                    // ---- drawing tools: thin single-colour outlines (no fills), 1.5 wide on the 24 grid
                     case "select":
-                        {
-                            var cur = new[] { new PointF(5, 2.5f), new PointF(5, 20.5f), new PointF(9.4f, 16.4f), new PointF(12.3f, 22.5f), new PointF(15.4f, 21.1f), new PointF(12.5f, 15.2f), new PointF(18.6f, 15) };
-                            g.FillPolygon(inkB, cur);
-                            using (var op = P(light ? dark : Color.White, 1.5f)) g.DrawPolygon(op, cur);
-                            break;
-                        }
+                        g.DrawPolygon(tp, new[] { new PointF(5.5f, 3), new PointF(5.5f, 20), new PointF(9.6f, 16.2f), new PointF(12.4f, 22), new PointF(15, 20.8f), new PointF(12.2f, 15.2f), new PointF(18, 15) });
+                        break;
                     case "arrow":
-                        using (var ap = P(coral, 3.6f)) g.DrawLine(ap, 4.5f, 19.5f, 15.5f, 8.5f);
-                        using (var cb = new SolidBrush(coral)) g.FillPolygon(cb, new[] { new PointF(21.5f, 2.5f), new PointF(10.5f, 5.4f), new PointF(18.6f, 13.5f) });
+                        g.DrawLine(tp, 5, 19, 19, 5);
+                        g.DrawLines(tp, new[] { new PointF(9.5f, 5), new PointF(19, 5), new PointF(19, 14.5f) });
                         break;
                     case "line":
-                        using (var lp = P(acc, 3.6f)) g.DrawLine(lp, 4.5f, 19.5f, 19.5f, 4.5f);
+                        g.DrawLine(tp, 6.3f, 17.7f, 17.7f, 6.3f);
+                        g.DrawEllipse(tp, 2.7f, 17.7f, 3.6f, 3.6f); g.DrawEllipse(tp, 17.7f, 2.7f, 3.6f, 3.6f);
                         break;
                     case "shape":
-                        using (var rp = RR(2.5f, 4.5f, 14, 11, 2.5f)) g.DrawPath(pen, rp);
-                        g.FillEllipse(accB, 11, 10.5f, 10.5f, 10.5f);
-                        using (var op = P(dark, 1.2f)) g.DrawEllipse(op, 11, 10.5f, 10.5f, 10.5f);
+                        using (var rp = RR(2.5f, 5, 12.5f, 10, 2)) g.DrawPath(tp, rp);
+                        g.DrawEllipse(tp, 10.5f, 9.5f, 11, 11);
                         break;
                     case "callout":
-                        using (var bb = new SolidBrush(blue))
-                        {
-                            using (var rp = RR(2, 3, 20, 13.5f, 4)) g.FillPath(bb, rp);
-                            g.FillPolygon(bb, new[] { new PointF(6.5f, 15), new PointF(5.5f, 21.5f), new PointF(12.5f, 15) });
-                        }
-                        using (var wp = P(Color.White, 2f)) { g.DrawLine(wp, 6, 7.5f, 18, 7.5f); g.DrawLine(wp, 6, 11.5f, 14, 11.5f); }
+                        using (var rp = RR(2.5f, 3.5f, 19, 13, 3.5f)) g.DrawPath(tp, rp);
+                        g.DrawLines(tp, new[] { new PointF(7, 16.5f), new PointF(6, 21), new PointF(11.5f, 16.5f) });
+                        g.DrawLine(tp, 7, 8.2f, 17, 8.2f); g.DrawLine(tp, 7, 11.8f, 13, 11.8f);
                         break;
                     case "text":
-                        g.FillRectangle(inkB, 4, 3.5f, 16, 3.8f); g.FillRectangle(inkB, 10.1f, 3.5f, 3.8f, 17.5f); g.FillRectangle(inkB, 7.3f, 19.2f, 9.4f, 2.4f);
+                        g.DrawLine(tp, 5, 5.5f, 19, 5.5f); g.DrawLine(tp, 5, 5.5f, 5, 8.5f); g.DrawLine(tp, 19, 5.5f, 19, 8.5f);
+                        g.DrawLine(tp, 12, 5.5f, 12, 19); g.DrawLine(tp, 8.5f, 19, 15.5f, 19);
                         break;
                     case "step":
-                        using (var bb = new SolidBrush(blue)) g.FillEllipse(bb, 2, 2, 20, 20);
-                        using (var f = new Font("Segoe UI", 13, FontStyle.Bold, GraphicsUnit.Pixel))
-                        using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
-                            g.DrawString("1", f, Brushes.White, new RectangleF(2, 2.5f, 20, 20), sf);
+                        g.DrawEllipse(tp, 3, 3, 18, 18);
+                        g.DrawLines(tp, new[] { new PointF(10, 9.8f), new PointF(12.6f, 7.6f), new PointF(12.6f, 16.6f) });
+                        g.DrawLine(tp, 10.2f, 16.6f, 15, 16.6f);
                         break;
                     case "stamp":
-                        using (var gb = new SolidBrush(gold)) Star(g, gb, P(Color.FromArgb(176, 100, 0), 1.4f), 12, 12.8f, 11.5f, 4.9f);
+                        Star(g, null, tp, 12, 12.6f, 9.8f, 4.3f);
                         break;
                     case "pen":
-                        {
-                            var body = new[] { new PointF(5.2f, 14.6f), new PointF(14.4f, 5.4f), new PointF(18.6f, 9.6f), new PointF(9.4f, 18.8f) };
-                            var tipP = new[] { new PointF(2.8f, 21.4f), new PointF(5.2f, 14.6f), new PointF(9.4f, 18.8f) };
-                            var endP = new[] { new PointF(14.4f, 5.4f), new PointF(16.9f, 2.9f), new PointF(21.1f, 7.1f), new PointF(18.6f, 9.6f) };
-                            g.FillPolygon(Brushes.White, body);
-                            using (var tb = new SolidBrush(Color.FromArgb(255, 170, 60))) g.FillPolygon(tb, tipP);
-                            using (var eb = new SolidBrush(Color.FromArgb(244, 114, 140))) g.FillPolygon(eb, endP);
-                            using (var op = P(dark, 1.2f)) { g.DrawPolygon(op, body); g.DrawPolygon(op, tipP); g.DrawPolygon(op, endP); }
-                            break;
-                        }
+                        g.DrawPolygon(tp, new[] { new PointF(15.5f, 4.5f), new PointF(19.5f, 8.5f), new PointF(8.5f, 19.5f), new PointF(3.8f, 20.2f), new PointF(4.5f, 15.5f) });
+                        g.DrawLine(tp, 12.8f, 7.2f, 16.8f, 11.2f);
+                        break;
                     case "highlighter":
-                        {
-                            var body = new[] { new PointF(6, 12.5f), new PointF(13.5f, 5), new PointF(19.5f, 11), new PointF(12, 18.5f) };
-                            var nib = new[] { new PointF(6, 12.5f), new PointF(12, 18.5f), new PointF(3.5f, 20) };
-                            using (var yb = new SolidBrush(Color.FromArgb(250, 204, 21))) g.FillPolygon(yb, body);
-                            using (var nb = new SolidBrush(Color.FromArgb(215, 219, 226))) g.FillPolygon(nb, nib);
-                            using (var op = P(dark, 1.2f)) { g.DrawPolygon(op, body); g.DrawPolygon(op, nib); }
-                            using (var hp = P(Color.FromArgb(235, 255, 226, 40), 3.2f)) g.DrawLine(hp, 7, 22.3f, 21.5f, 22.3f);
-                            break;
-                        }
+                        g.DrawPolygon(tp, new[] { new PointF(6.5f, 12.5f), new PointF(13.5f, 5.5f), new PointF(19, 11), new PointF(12, 18) });
+                        g.DrawPolygon(tp, new[] { new PointF(6.5f, 12.5f), new PointF(12, 18), new PointF(4, 19.5f) });
+                        g.DrawLine(tp, 8.5f, 22.2f, 21, 22.2f);
+                        break;
                     case "fill":
-                        {
-                            var dia = new[] { new PointF(10.5f, 2.5f), new PointF(19, 11), new PointF(10.5f, 19.5f), new PointF(2, 11) };
-                            using (var fb = new SolidBrush(Color.FromArgb(80, acc))) g.FillPolygon(fb, dia);
-                            g.DrawPolygon(pen, dia);
-                            g.FillEllipse(accB, 17.5f, 14, 5.5f, 7);
-                            break;
-                        }
+                        g.DrawPolygon(tp, new[] { new PointF(10, 3), new PointF(18, 11), new PointF(10, 19), new PointF(2, 11) });
+                        g.DrawLine(tp, 3.7f, 12.7f, 16.3f, 12.7f);
+                        g.DrawEllipse(tp, 17.8f, 14.8f, 4, 5.4f);
+                        break;
                     case "blur":
-                        for (int i = 0; i < 3; i++)
-                            for (int j = 0; j < 3; j++)
-                                using (var b = new SolidBrush(Color.FromArgb(70 + ((i * 3 + j) * 47) % 185, acc)))
-                                    g.FillRectangle(b, 2 + i * 7.2f, 2 + j * 7.2f, 6.6f, 6.6f);
+                        using (var rp = RR(3, 3, 18, 18, 1.5f)) g.DrawPath(tp, rp);
+                        g.DrawLine(tp, 9, 3, 9, 21); g.DrawLine(tp, 15, 3, 15, 21); g.DrawLine(tp, 3, 9, 21, 9); g.DrawLine(tp, 3, 15, 21, 15);
+                        using (var fb = new SolidBrush(Color.FromArgb(95, ink)))
+                        {
+                            g.FillRectangle(fb, 3.75f, 3.75f, 4.7f, 4.7f); g.FillRectangle(fb, 15.75f, 9.75f, 4.7f, 4.7f); g.FillRectangle(fb, 9.75f, 15.75f, 4.7f, 4.7f);
+                        }
                         break;
                     case "magnify":
-                        g.DrawEllipse(P(ink, 2.6f), 3, 3, 12.5f, 12.5f);
-                        g.DrawLine(P(ink, 4f), 14, 14, 20.5f, 20.5f);
-                        g.DrawLine(P(acc, 2f), 6.2f, 9.3f, 12.3f, 9.3f); g.DrawLine(P(acc, 2f), 9.3f, 6.2f, 9.3f, 12.3f);
+                        g.DrawEllipse(tp, 3.5f, 3.5f, 12, 12);
+                        g.DrawLine(tp, 14, 14, 20.5f, 20.5f);
+                        g.DrawLine(tp, 6.5f, 9.5f, 12.5f, 9.5f); g.DrawLine(tp, 9.5f, 6.5f, 9.5f, 12.5f);
                         break;
                     case "spotlight":
-                        g.FillRectangle(new SolidBrush(Color.FromArgb(light ? 120 : 200, ink)), 2.5f, 4.5f, 19, 15);
-                        g.FillEllipse(Brushes.White, 6.5f, 6.5f, 11, 11);
-                        g.DrawEllipse(accPen, 6.5f, 6.5f, 11, 11);
+                        using (var rp = RR(2.5f, 4.5f, 19, 15, 2)) g.DrawPath(tp, rp);
+                        g.DrawEllipse(tp, 7.5f, 7.5f, 9, 9);
                         break;
                     case "eraser":
-                        {
-                            var er = new[] { new PointF(3.5f, 14), new PointF(11, 6), new PointF(20, 15), new PointF(14.5f, 20.5f), new PointF(9, 20.5f) };
-                            using (var eb = new SolidBrush(Color.FromArgb(200, 244, 114, 140))) g.FillPolygon(eb, er);
-                            g.DrawPolygon(pen, er);
-                            g.DrawLine(pen, 12.5f, 20.5f, 22, 20.5f);
-                            break;
-                        }
+                        g.DrawPolygon(tp, new[] { new PointF(3.5f, 14), new PointF(11, 6), new PointF(20, 15), new PointF(14.5f, 20.5f), new PointF(9, 20.5f) });
+                        g.DrawLine(tp, 7.8f, 17.7f, 15.2f, 10.3f);
+                        g.DrawLine(tp, 12.5f, 20.5f, 22, 20.5f);
+                        break;
                     case "crop":
-                        using (var cp = P(ink, 2.7f))
-                        {
-                            g.DrawLines(cp, new[] { new PointF(7, 2), new PointF(7, 17), new PointF(22, 17) });
-                            g.DrawLines(cp, new[] { new PointF(2, 7), new PointF(17, 7), new PointF(17, 22) });
-                        }
+                        g.DrawLines(tp, new[] { new PointF(7, 2.5f), new PointF(7, 17), new PointF(21.5f, 17) });
+                        g.DrawLines(tp, new[] { new PointF(2.5f, 7), new PointF(17, 7), new PointF(17, 21.5f) });
                         break;
                     case "cutout":
                         g.DrawLine(pen, 7, 4, 17, 15); g.DrawLine(pen, 17, 4, 7, 15);

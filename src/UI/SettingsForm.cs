@@ -48,7 +48,7 @@ namespace RXCapture
 
             Page("General");
             cbLang = Combo("Language", new[] { "Automatic", "English", "Tiếng Việt" }, cfg.Language == "en" ? 1 : (cfg.Language == "vi" ? 2 : 0));
-            chStartup = Check("Start RXCapture when Windows starts", IsStartup());
+            chStartup = Check("Start RXCapture when Windows starts", Startup.IsEnabled);
             chTray = Check("Show the tray icon", cfg.ShowTray);
             chMinTray = Check("Keep running in the tray when windows are closed", cfg.MinimizeToTray);
             chWidget = Check("Show the capture widget at the top of the screen", cfg.ShowWidget);
@@ -180,45 +180,10 @@ namespace RXCapture
 
         // ------------------------------------------------------------------ persistence
 
-        /// <summary>The Windows start-up entry used to be called ShotCraft; move it to the new name (and the new exe path).</summary>
-        public static void MigrateStartupEntry()
-        {
-            try
-            {
-                using (var k = Registry.CurrentUser.OpenSubKey(@"SoftwareMicrosoftWindowsCurrentVersionRun", true))
-                {
-                    if (k == null || k.GetValue("ShotCraft") == null) return;
-                    k.DeleteValue("ShotCraft", false);
-                    k.SetValue("RXCapture", "\"" + Application.ExecutablePath + "\" --minimized");
-                }
-            }
-            catch { }
-        }
-
-        static bool IsStartup()
-        {
-            try { using (var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run")) return k != null && k.GetValue("RXCapture") != null; }
-            catch { return false; }
-        }
-
-        static void SetStartup(bool on)
-        {
-            try
-            {
-                using (var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true))
-                {
-                    if (k == null) return;
-                    if (on) k.SetValue("RXCapture", "\"" + Application.ExecutablePath + "\" --minimized");
-                    else k.DeleteValue("RXCapture", false);
-                }
-            }
-            catch { }
-        }
-
         void Apply()
         {
             cfg.Language = new[] { "auto", "en", "vi" }[cbLang.SelectedIndex];
-            SetStartup(chStartup.Checked); cfg.RunAtStartup = chStartup.Checked;
+            Startup.Set(chStartup.Checked);
             cfg.ShowTray = chTray.Checked; cfg.MinimizeToTray = chMinTray.Checked; cfg.LibraryMax = (int)nLib.Value;
             cfg.ShowWidget = chWidget.Checked; cfg.EditorMaximized = chEditorMax.Checked;
             cfg.IncludeCursor = chCursor.Checked; cfg.DelaySeconds = (int)nDelay.Value; cfg.ShowMagnifier = chMag.Checked;

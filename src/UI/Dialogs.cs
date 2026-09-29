@@ -80,7 +80,7 @@ namespace RXCapture
 
         public TrackBar AddSlider(string label, int min, int max, int val)
         {
-            var t = new TrackBar { Minimum = min, Maximum = max, Value = Math.Max(min, Math.Min(max, val)), TickStyle = TickStyle.None, Width = 180, Height = 28 };
+            var t = new TrackBar { Minimum = min, Maximum = max, Value = Math.Max(min, Math.Min(max, val)), TickStyle = TickStyle.None, AutoSize = false, Width = 180, Height = 28 };    // AutoSize would make it ~45px tall and cover the top of the next row
             var v = new Label { Left = 14 + labelW + 186, Top = y + 3, Width = 40, Text = t.Value.ToString() };
             t.ValueChanged += delegate { v.Text = t.Value.ToString(); Changed(); };
             Controls.Add(v);

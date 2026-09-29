@@ -71,7 +71,9 @@ namespace RXCapture
             else if (c is ComboBox)
             {
                 var cb = (ComboBox)c;
-                cb.BackColor = Field; cb.ForeColor = Text; cb.FlatStyle = FlatStyle.Flat;
+                cb.BackColor = Field; cb.ForeColor = Text; cb.FlatStyle = FlatStyle.Standard;
+                if (cb.DropDownStyle == ComboBoxStyle.DropDownList) new ComboSkin(cb);                  // the system paints a flat drop-down list clipped and light blue: paint the closed box ourselves
+                else { EventHandler dark = delegate { try { SetWindowTheme(cb.Handle, "DarkMode_CFD", null); } catch { } }; cb.HandleCreated += dark; if (cb.IsHandleCreated) dark(cb, EventArgs.Empty); }
             }
             else if (c is CheckBox || c is RadioButton)
             {
@@ -162,6 +164,74 @@ namespace RXCapture
         {
             e.ArrowColor = Theme.Text;
             base.OnRenderArrow(e);
+        }
+    }
+
+    /// <summary>Paints the closed box of a drop-down list in the dark theme. Windows draws it clipped and light blue (flat style) or with a
+    /// white button (standard style); the list that opens below is left to Windows.</summary>
+    public class ComboSkin : NativeWindow
+    {
+        const int WM_PAINT = 0x000F, WM_ERASEBKGND = 0x0014;
+        [StructLayout(LayoutKind.Sequential)] struct PAINTSTRUCT { public IntPtr hdc; public bool fErase; public int l, t, r, b; public bool fRestore, fIncUpdate; [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)] public byte[] rgb; }
+        [DllImport("user32.dll")] static extern IntPtr BeginPaint(IntPtr h, out PAINTSTRUCT ps);
+        [DllImport("user32.dll")] static extern bool EndPaint(IntPtr h, ref PAINTSTRUCT ps);
+        [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)] static extern int SetWindowTheme(IntPtr h, string app, string list);
+
+        readonly ComboBox cb;
+        bool hot;
+
+        public ComboSkin(ComboBox combo)
+        {
+            cb = combo;
+            cb.MouseEnter += delegate { hot = true; cb.Invalidate(); };
+            cb.MouseLeave += delegate { hot = false; cb.Invalidate(); };
+            cb.GotFocus += delegate { cb.Invalidate(); };
+            cb.LostFocus += delegate { cb.Invalidate(); };
+            cb.DropDown += delegate { cb.Invalidate(); };
+            cb.DropDownClosed += delegate { cb.Invalidate(); };
+            cb.SelectedIndexChanged += delegate { cb.Invalidate(); };
+            cb.HandleCreated += delegate { Attach(); };
+            cb.HandleDestroyed += delegate { ReleaseHandle(); };
+            if (cb.IsHandleCreated) Attach();
+        }
+
+        void Attach()
+        {
+            AssignHandle(cb.Handle);
+            try { SetWindowTheme(cb.Handle, "DarkMode_CFD", null); } catch { }     // the list that opens: dark scrollbar
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WM_ERASEBKGND) { m.Result = (IntPtr)1; return; }
+            if (m.Msg == WM_PAINT)
+            {
+                PAINTSTRUCT ps;
+                IntPtr hdc = BeginPaint(m.HWnd, out ps);
+                try { using (var g = Graphics.FromHdc(hdc)) Paint(g); }
+                finally { EndPaint(m.HWnd, ref ps); }
+                m.Result = IntPtr.Zero;
+                return;
+            }
+            base.WndProc(ref m);
+        }
+
+        void Paint(Graphics g)
+        {
+            var r = cb.ClientRectangle;
+            bool active = cb.Focused || cb.DroppedDown;
+            using (var bg = new SolidBrush(Theme.Field)) g.FillRectangle(bg, r);
+            var border = active ? Theme.AccentLight : (hot ? Theme.TextDim : Color.FromArgb(110, 110, 116));
+            using (var p = new Pen(border)) g.DrawRectangle(p, 0, 0, r.Width - 1, r.Height - 1);
+
+            string s = cb.SelectedItem == null ? cb.Text : cb.GetItemText(cb.SelectedItem);
+            var tr = new Rectangle(6, 1, Math.Max(0, r.Width - 28), r.Height - 2);
+            TextRenderer.DrawText(g, s, cb.Font, tr, cb.Enabled ? Theme.Text : Theme.TextDim,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+
+            int x = r.Width - 13, y = r.Height / 2;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var p = new Pen(active ? Theme.Text : Theme.TextDim, 1.4f)) g.DrawLines(p, new[] { new Point(x - 4, y - 2), new Point(x, y + 2), new Point(x + 4, y - 2) });
         }
     }
 

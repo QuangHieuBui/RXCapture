@@ -20,7 +20,12 @@ namespace RXCapture
         static readonly Font LabelFont = new Font("Segoe UI", 8.5f);
 
         public event Action<LibItem> ItemOpen;
-        /// <summary>Delete was requested for an item (X button or menu). Without a handler the grid asks and deletes it itself.</summary>
+        /// <summary>Close was requested for an item (the X button, or right-click > Close): hide it from the list, delete nothing.
+        /// Without a handler the grid hides it itself.</summary>
+        public event Action<LibItem> ItemClose;
+        /// <summary>Close was requested for several ticked items (right-click > Close selected).</summary>
+        public event Action<List<LibItem>> ItemsClose;
+        /// <summary>Delete was requested for an item (right-click > Delete). Without a handler the grid asks and deletes it itself.</summary>
         public event Action<LibItem> ItemRemove;
         /// <summary>Delete was requested for several ticked items at once (right-click > Delete selected).</summary>
         public event Action<List<LibItem>> ItemsRemove;
@@ -149,9 +154,12 @@ namespace RXCapture
             return new Rectangle(c.X + (int)(6 * S), c.Y + (int)(6 * S), d, d);
         }
 
+        // Deleting is the one destructive action here, so it asks first, answers "No" by default, says where the files go, and
+        // sends them to the Recycle Bin. Closing (the X button) only hides an item and never asks.
         public static bool ConfirmDeleteMany(IWin32Window owner, int count)
         {
-            return MessageBox.Show(owner, Loc.T("Delete the selected items from the library?") + " (" + count + ")", "RXCapture", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+            return MessageBox.Show(owner, Loc.T("Delete the selected items from the library?") + " (" + count + ")\n\n" + Loc.T("They are moved to the Recycle Bin. Files you saved elsewhere are not touched. Use Close to just hide them."),
+                "RXCapture", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
         }
 
         void RemoveTicked()
@@ -160,8 +168,23 @@ namespace RXCapture
             if (list.Count == 0) return;
             if (!ConfirmDeleteMany(FindForm(), list.Count)) return;      // asked here, so cancelling keeps the selection
             if (ItemsRemove != null) ItemsRemove(list);
-            else LibraryStore.DeleteMany(list);
+            else LibraryStore.DeleteMany(list, true);
             SetSelecting(false);
+        }
+
+        void CloseTicked()
+        {
+            var list = TickedItems();
+            if (list.Count == 0) return;
+            if (ItemsClose != null) ItemsClose(list);
+            else LibraryStore.SetClosed(list, true);
+            SetSelecting(false);
+        }
+
+        void CloseItem(LibItem it)
+        {
+            if (ItemClose != null) ItemClose(it);
+            else LibraryStore.SetClosed(new[] { it }, true);
         }
 
         /// <summary>The small X button in the top-right corner of a cell.</summary>
@@ -173,13 +196,14 @@ namespace RXCapture
 
         public static bool ConfirmDelete(IWin32Window owner)
         {
-            return MessageBox.Show(owner, Loc.T("Delete this capture from the library?"), "RXCapture", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+            return MessageBox.Show(owner, Loc.T("Delete this capture from the library?") + "\n\n" + Loc.T("It is moved to the Recycle Bin. A file you saved elsewhere is not touched. Use Close to just hide it."),
+                "RXCapture", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
         }
 
         void Remove(LibItem it)
         {
             if (ItemRemove != null) ItemRemove(it);
-            else if (ConfirmDelete(FindForm())) LibraryStore.Delete(it);
+            else if (ConfirmDelete(FindForm())) LibraryStore.Delete(it, true);
         }
 
         int HitIndex(Point p)
@@ -243,11 +267,15 @@ namespace RXCapture
                         g.FillRectangle(Brushes.White, ir.Right + (int)(1 * s), y, (int)(3 * s), (int)(3 * s));
                     }
                 }
-                string label = it.Ext;
+                // the name of the file it was saved to (the item's main file); "png" / "mp4" until it has been saved
+                string label = string.IsNullOrEmpty(it.ExportPath) ? it.Ext : Path.GetFileName(it.ExportPath);
                 var lr = new Rectangle(c.X + (int)(6 * s), c.Bottom - (int)(18 * s), c.Width - (int)(12 * s), (int)(16 * s));
-                TextRenderer.DrawText(g, label, LabelFont, lr, Color.White, TextFormatFlags.NoPadding | TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
-                if (it.IsVideo)
-                    TextRenderer.DrawText(g, TimeSpan.FromSeconds(it.DurationSec).ToString(it.DurationSec >= 3600 ? @"hh\:mm\:ss" : @"mm\:ss"), LabelFont, lr, Color.White, TextFormatFlags.NoPadding | TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
+                string dur = it.IsVideo ? TimeSpan.FromSeconds(it.DurationSec).ToString(it.DurationSec >= 3600 ? @"hh\:mm\:ss" : @"mm\:ss") : null;
+                var nameRect = lr;
+                if (dur != null) nameRect.Width = Math.Max(10, lr.Width - TextRenderer.MeasureText(dur, LabelFont, new Size(200, 20), TextFormatFlags.NoPadding).Width - (int)(4 * s));
+                TextRenderer.DrawText(g, label, LabelFont, nameRect, Color.White, TextFormatFlags.NoPadding | TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+                if (dur != null)
+                    TextRenderer.DrawText(g, dur, LabelFont, lr, Color.White, TextFormatFlags.NoPadding | TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
                 if (selecting)
                 {
                     var br = BoxRect(c);
@@ -347,7 +375,7 @@ namespace RXCapture
             if (h != hover || x != hoverX)
             {
                 hover = h; hoverX = x; Invalidate();
-                tip.SetToolTip(this, x ? Loc.T("Delete") : "");
+                tip.SetToolTip(this, x ? Loc.T("Close") : (h >= 0 && !string.IsNullOrEmpty(items[h].ExportPath) ? items[h].ExportPath : ""));
             }
         }
 
@@ -388,13 +416,13 @@ namespace RXCapture
                     ticked.Clear(); ticked.Add(items[i].Id); anchor = i; Invalidate();
                     return;
                 }
-                if (XRect(CellRect(i)).Contains(e.Location)) { Remove(items[i]); return; }
+                if (XRect(CellRect(i)).Contains(e.Location)) { CloseItem(items[i]); return; }      // X = Close: hides the item, deletes nothing
                 Selected = items[i]; anchor = i; Invalidate();
                 if (ItemOpen != null) ItemOpen(items[i]);
             }
             else if (e.Button == MouseButtons.Right)
             {
-                if (i < 0) return;
+                if (i < 0) { ShowEmptyMenu(e.Location); return; }
                 Selected = items[i]; Invalidate();
                 ShowMenu(items[i], e.Location);
             }
@@ -429,6 +457,9 @@ namespace RXCapture
                 m.Items.Add(Theme.Item("Select all", "check", delegate { foreach (var x in items) ticked.Add(x.Id); Invalidate(); }));
                 m.Items.Add(Theme.Item("Deselect all", "close", delegate { ticked.Clear(); anchor = -1; Invalidate(); }));
                 m.Items.Add(new ToolStripSeparator());
+                var close = Theme.Item("Close selected", "close", delegate { CloseTicked(); });
+                close.Text += " (" + n + ")"; close.Enabled = n > 0;
+                m.Items.Add(close);
                 var del = Theme.Item("Delete selected", "trash", delegate { RemoveTicked(); });
                 del.Text += " (" + n + ")"; del.Enabled = n > 0;
                 m.Items.Add(del);
@@ -448,7 +479,29 @@ namespace RXCapture
             m.Items.Add(Theme.Item("Show in folder", "folder", delegate { try { System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + it.File + "\""); } catch { } }));
             m.Items.Add(new ToolStripSeparator());
             m.Items.Add(Theme.Item("Select multiple", "check", delegate { selecting = true; ticked.Clear(); ticked.Add(it.Id); anchor = items.IndexOf(it); Invalidate(); }));
+            m.Items.Add(Theme.Item("Close", "close", delegate { CloseItem(it); }));
             m.Items.Add(Theme.Item("Delete", "trash", delegate { Remove(it); }));
+            AddRestore(m);
+            m.Show(this, p);
+        }
+
+        /// <summary>"Restore closed items (N)" when some items were closed (hidden) earlier.</summary>
+        void AddRestore(ContextMenuStrip m)
+        {
+            int closed = LibraryStore.ClosedCount();
+            if (closed == 0) return;
+            m.Items.Add(new ToolStripSeparator());
+            var r = Theme.Item("Restore closed items", "open", delegate { LibraryStore.RestoreClosed(); });
+            r.Text += " (" + closed + ")";
+            m.Items.Add(r);
+        }
+
+        void ShowEmptyMenu(Point p)
+        {
+            var m = Theme.Menu();
+            AddRestore(m);
+            if (m.Items.Count == 0) { m.Dispose(); return; }
+            m.Items.RemoveAt(0);                     // the separator that AddRestore puts first
             m.Show(this, p);
         }
     }
