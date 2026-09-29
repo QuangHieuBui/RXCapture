@@ -44,6 +44,8 @@ namespace RXCapture
 
         public int VideoFps = 15;
         public bool VideoCursor = true;
+        public bool RecordMic = false;               // sound for video recordings: microphone and/or what the computer plays (speakers); needs MP4
+        public bool RecordSystemSound = false;
         public string VideoFormat = "mp4";           // avi | gif | mp4 (H.264 via Windows Media Foundation)
         public int SettingsVersion = 0;              // bumped by the one-time migrations below (0 = file written by an older build)
         public int GifMaxWidth = 800;

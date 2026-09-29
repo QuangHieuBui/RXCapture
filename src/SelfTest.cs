@@ -310,6 +310,179 @@ namespace RXCapture
                 return null;
             });
 
+            Check("MP4 with sound: the WAV becomes an AAC track, trim keeps the matching part", delegate
+            {
+                string avi = Path.Combine(tmp, "s.avi"), wav = Path.Combine(tmp, "s.wav"), mp4 = Path.Combine(tmp, "s.mp4"), cut = Path.Combine(tmp, "s-cut.mp4"), mute = Path.Combine(tmp, "s-mute.mp4");
+                byte[] jpg;
+                using (var b = new Bitmap(320, 180))
+                {
+                    using (var g = Graphics.FromImage(b)) g.Clear(Color.SteelBlue);
+                    using (var ms = new MemoryStream()) { b.Save(ms, System.Drawing.Imaging.ImageFormat.Jpeg); jpg = ms.ToArray(); }
+                }
+                using (var w = new AviWriter(avi, 320, 180, 15)) for (int i = 0; i < 30; i++) w.AddFrame(jpg);       // 2 s of picture
+                // 2 s of sound in the recorder's format: a 440 Hz tone for the first second, then silence
+                using (var fs = File.Create(wav))
+                {
+                    fs.Write(new byte[AudioRecorder.WavHeader], 0, AudioRecorder.WavHeader);
+                    var pcm = new byte[AudioRecorder.Rate * 2 * 2 * 2];
+                    for (int i = 0; i < AudioRecorder.Rate * 2; i++)
+                    {
+                        short v = i < AudioRecorder.Rate ? (short)(Math.Sin(2 * Math.PI * 440 * i / AudioRecorder.Rate) * 5000) : (short)0;
+                        pcm[i * 4] = pcm[i * 4 + 2] = (byte)(v & 0xff);                    // left and right
+                        pcm[i * 4 + 1] = pcm[i * 4 + 3] = (byte)((v >> 8) & 0xff);
+                    }
+                    fs.Write(pcm, 0, pcm.Length);
+                }
+                if (!Mp4Writer.Convert(avi, mute, 15)) return "MP4 encoder unavailable on this Windows";
+                using (var none = Mp4Writer.AudioReader.TryOpen(mute)) if (none != null) return "a video recorded without sound reports an audio track";
+                if (!Mp4Writer.Convert(avi, mp4, 15, wav)) return "MP4 with sound failed (AAC encoder unavailable?)";
+
+                Func<string, double[]> levels = delegate(string file)            // RMS per 100 ms window
+                {
+                    using (var ar = Mp4Writer.AudioReader.TryOpen(file))
+                    {
+                        if (ar == null) return null;
+                        var sums = new System.Collections.Generic.List<double>(); var cnt = new System.Collections.Generic.List<int>();
+                        byte[] pcm; long t;
+                        while (ar.Next(out pcm, out t))
+                            for (int f = 0; f < pcm.Length / ar.BlockAlign; f++)
+                            {
+                                int win = (int)((t * ar.Rate / 10000000L + f) / (ar.Rate / 10));
+                                while (sums.Count <= win) { sums.Add(0); cnt.Add(0); }
+                                double s = BitConverter.ToInt16(pcm, f * ar.BlockAlign) / 32768.0;
+                                sums[win] += s * s; cnt[win]++;
+                            }
+                        var r = new double[sums.Count];
+                        for (int i = 0; i < r.Length; i++) r[i] = cnt[i] > 0 ? Math.Sqrt(sums[i] / cnt[i]) : 0;
+                        return r;
+                    }
+                };
+                var full = levels(mp4);
+                if (full == null) return "no audio track in the MP4";
+                if (full.Length < 18 || full.Length > 23) return "audio lasts " + full.Length / 10.0 + " s, expected 2 s";
+                if (full[5] < 0.05) return "the first second is silent (rms " + full[5].ToString("0.000") + ")";
+                if (full[15] > 0.02) return "the second second is not silent (rms " + full[15].ToString("0.000") + ")";
+
+                Bitmap first; TimeSpan kept;
+                if (!Mp4Writer.Trim(mp4, cut, TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(1.5), out first, out kept)) return "trim failed";
+                first.Dispose();
+                var part = levels(cut);
+                if (part == null) return "trim dropped the audio track";
+                if (part.Length < 8 || part.Length > 12) return "trimmed audio lasts " + part.Length / 10.0 + " s, expected 1 s";
+                if (part[2] < 0.05) return "trimmed: the tone half is silent (rms " + part[2].ToString("0.000") + ")";
+                if (part[7] > 0.02) return "trimmed: the silent half has sound (rms " + part[7].ToString("0.000") + ")";
+                log.AppendLine("  sound: full " + full.Length / 10.0 + " s, trimmed " + part.Length / 10.0 + " s");
+                return null;
+            });
+
+            Check("sound recorder: computer sound follows the clock, pause skips time, mute gives silence, microphone opens", delegate
+            {
+                string wav = Path.Combine(tmp, "rec.wav");
+                // a quiet 1 kHz tone, 4 s, played through the default speakers
+                var tone = new MemoryStream();
+                {
+                    int rate = 44100, n = rate * 4;
+                    var bw = new BinaryWriter(tone);
+                    bw.Write(new[] { (byte)'R', (byte)'I', (byte)'F', (byte)'F' }); bw.Write(36 + n * 2);
+                    bw.Write(new[] { (byte)'W', (byte)'A', (byte)'V', (byte)'E', (byte)'f', (byte)'m', (byte)'t', (byte)' ' });
+                    bw.Write(16); bw.Write((short)1); bw.Write((short)1); bw.Write(rate); bw.Write(rate * 2); bw.Write((short)2); bw.Write((short)16);
+                    bw.Write(new[] { (byte)'d', (byte)'a', (byte)'t', (byte)'a' }); bw.Write(n * 2);
+                    for (int i = 0; i < n; i++) bw.Write((short)(Math.Sin(2 * Math.PI * 1000 * i / rate) * 6000));
+                    bw.Flush(); tone.Position = 0;
+                }
+                var clock = new System.Diagnostics.Stopwatch();
+                using (var rec = new AudioRecorder())
+                using (var player = new System.Media.SoundPlayer(tone))
+                {
+                    // the recording clock starts once the devices are open (the recorder bar does the same)
+                    bool ok = rec.Start(wav, false, true, () => clock.ElapsedMilliseconds);
+                    clock.Start();
+                    if (!ok) { log.AppendLine("  no speakers to record (" + rec.Problem + ") - skipped"); }
+                    else
+                    {
+                        player.Play();
+                        System.Threading.Thread.Sleep(1000);                             // 0 - 1 s : sound
+                        rec.Paused = true; clock.Stop();
+                        System.Threading.Thread.Sleep(600);                              // paused: must not count
+                        clock.Start(); rec.Paused = false; rec.SystemMuted = true;
+                        System.Threading.Thread.Sleep(1000);                             // 1 - 2 s of recording: muted
+                        rec.Stop(); clock.Stop(); player.Stop();
+                        var f = new FileInfo(wav);
+                        double secs = (f.Length - AudioRecorder.WavHeader) / (double)(AudioRecorder.Rate * 4);
+                        if (Math.Abs(secs - 2.0) > 0.15) return "recorded " + secs.ToString("0.00") + " s, expected 2 s (pause must not count)";
+                        var raw = File.ReadAllBytes(wav);
+                        Func<double, double, double> rms = delegate(double a, double b)
+                        {
+                            long from = AudioRecorder.WavHeader + (long)(a * AudioRecorder.Rate) * 4, to = AudioRecorder.WavHeader + (long)(b * AudioRecorder.Rate) * 4;
+                            double sum = 0; long cnt = 0;
+                            for (long p = from; p + 1 < to && p + 1 < raw.Length; p += 4) { double s = BitConverter.ToInt16(raw, (int)p) / 32768.0; sum += s * s; cnt++; }
+                            return cnt == 0 ? 0 : Math.Sqrt(sum / cnt);
+                        };
+                        double heard = rms(0.3, 0.9), muted = rms(1.2, 1.9);
+                        log.AppendLine("  speakers: heard rms " + heard.ToString("0.0000") + ", muted rms " + muted.ToString("0.0000"));
+                        if (heard < 0.005) return "the tone played through the speakers was not recorded (rms " + heard.ToString("0.0000") + ")";
+                        if (muted > 0.0005) return "muted speakers still leak sound (rms " + muted.ToString("0.0000") + ")";
+                    }
+                }
+                using (var rec = new AudioRecorder())
+                {
+                    var c2 = new System.Diagnostics.Stopwatch();
+                    bool micOk = rec.Start(wav, true, false, () => c2.ElapsedMilliseconds);
+                    c2.Start();
+                    if (!micOk) log.AppendLine("  no microphone available (" + rec.Problem + ") - skipped");
+                    else
+                    {
+                        System.Threading.Thread.Sleep(800);
+                        rec.Stop(); c2.Stop();
+                        double secs = (new FileInfo(wav).Length - AudioRecorder.WavHeader) / (double)(AudioRecorder.Rate * 4);
+                        log.AppendLine("  microphone opened, recorded " + secs.ToString("0.00") + " s");
+                        if (Math.Abs(secs - 0.8) > 0.15) return "microphone recording lasts " + secs.ToString("0.00") + " s, expected 0.8 s";
+                    }
+                }
+                return null;
+            });
+
+            Check("video player sound: plays through the speakers from the chosen position, stops at once (heard by loopback)", delegate
+            {
+                string mp4 = Path.Combine(tmp, "s.mp4"), wav = Path.Combine(tmp, "play.wav");
+                if (!File.Exists(mp4)) return "the MP4 with sound from the previous test is missing";
+                using (var player = AudioPlayer.TryOpen(mp4))
+                {
+                    if (player == null) { log.AppendLine("  no sound output - skipped"); return null; }
+                    Func<double, double[]> listen = delegate(double from)          // play from `from` for 0.6 s, stop, listen 0.4 s more
+                    {
+                        using (var rec = new AudioRecorder())
+                        {
+                            var clock = new System.Diagnostics.Stopwatch();
+                            if (!rec.Start(wav, false, true, () => clock.ElapsedMilliseconds)) return null;
+                            clock.Start();
+                            player.Start(TimeSpan.FromSeconds(from));
+                            System.Threading.Thread.Sleep(600);
+                            player.Stop();
+                            System.Threading.Thread.Sleep(400);
+                            rec.Stop();
+                        }
+                        var raw = File.ReadAllBytes(wav);
+                        Func<double, double, double> rms = delegate(double a, double b)
+                        {
+                            long f0 = AudioRecorder.WavHeader + (long)(a * AudioRecorder.Rate) * 4, t0 = AudioRecorder.WavHeader + (long)(b * AudioRecorder.Rate) * 4;
+                            double sum = 0; long cnt = 0;
+                            for (long p = f0; p + 1 < t0 && p + 1 < raw.Length; p += 4) { double s = BitConverter.ToInt16(raw, (int)p) / 32768.0; sum += s * s; cnt++; }
+                            return cnt == 0 ? 0 : Math.Sqrt(sum / cnt);
+                        };
+                        return new[] { rms(0.15, 0.55), rms(0.8, 1.0) };
+                    };
+                    var fromStart = listen(0.0);
+                    if (fromStart == null) { log.AppendLine("  no speakers to listen to - skipped"); return null; }
+                    var pastTone = listen(1.2);
+                    log.AppendLine("  player: from 0 s rms " + fromStart[0].ToString("0.0000") + " / after stop " + fromStart[1].ToString("0.0000") + ";  from 1.2 s rms " + pastTone[0].ToString("0.0000"));
+                    if (fromStart[0] < 0.01) return "playing from the start was not heard (rms " + fromStart[0].ToString("0.0000") + ")";
+                    if (fromStart[1] > 0.003) return "sound kept playing after Stop (rms " + fromStart[1].ToString("0.0000") + ")";
+                    if (pastTone[0] > 0.003) return "playing from 1.2 s (silent part) is not silent (rms " + pastTone[0].ToString("0.0000") + ") - seek is wrong";
+                }
+                return null;
+            });
+
             Check("AVI writer/reader + GIF encoder", delegate
             {
                 string avi = Path.Combine(tmp, "t.avi"), gif = Path.Combine(tmp, "t.gif");

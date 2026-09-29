@@ -21,20 +21,34 @@ namespace RXCapture
         static readonly Guid MediaVideo = new Guid("73646976-0000-0010-8000-00aa00389b71");
         static readonly Guid FormatH264 = new Guid("34363248-0000-0010-8000-00aa00389b71");
         static readonly Guid FormatRgb32 = new Guid("00000016-0000-0010-8000-00aa00389b71");
+        static readonly Guid MediaAudio = new Guid("73647561-0000-0010-8000-00aa00389b71");
+        static readonly Guid FormatAac = new Guid("00001610-0000-0010-8000-00aa00389b71");
+        static readonly Guid FormatPcm = new Guid("00000001-0000-0010-8000-00aa00389b71");
+        static readonly Guid AudioChannels = new Guid("37e48bf5-645e-4c5b-89de-ada9e29b696a");
+        static readonly Guid AudioRate = new Guid("5faeeae7-0290-4c31-9e8a-c534f68d9dba");
+        static readonly Guid AudioBits = new Guid("f2deb57f-40fa-4764-aa33-ed4f2d1ff669");
+        static readonly Guid AudioBytesPerSec = new Guid("1aab75c8-cfef-451c-ab95-ac034b8e1731");
+        static readonly Guid AudioBlockAlign = new Guid("322de230-9eeb-43bd-ab7a-ff412251541d");
+        static readonly Guid AacPayload = new Guid("bfbabe79-7434-4d1c-94f0-72a3b9e17188");
+        static readonly Guid AacProfileLevel = new Guid("7632f0e6-9538-4d61-acda-ea29c8c14456");
 
-        /// <summary>Re-encodes the MJPEG frames of an AVI written by AviWriter as H.264 MP4.</summary>
-        public static bool Convert(string avi, string mp4, int fps)
+        /// <summary>Re-encodes the MJPEG frames of an AVI written by AviWriter as H.264 MP4. With <paramref name="wav"/> (an
+        /// <see cref="AudioRecorder"/> file) the sound is added as an AAC track.</summary>
+        public static bool Convert(string avi, string mp4, int fps, string wav = null)
         {
             fps = Math.Max(1, fps);
             bool started = false, ok = false;
+            WavSource wavSource = null;
             try
             {
                 if (MFStartup(MfVersion, 0) != 0) return false;
                 started = true;
                 IMFSinkWriter writer = null;
+                AudioFeed feed = null;
                 int frameNo = 0, w = 0, h = 0, stride = 0;
                 long duration = 10000000L / fps;
                 byte[] row = null;
+                if (wav != null && File.Exists(wav)) wavSource = new WavSource(wav);
                 foreach (var jpg in AviReader.Frames(avi))
                 {
                     using (var ms = new MemoryStream(jpg))
@@ -45,16 +59,20 @@ namespace RXCapture
                         if (writer == null)
                         {
                             w = bmp.Width; h = bmp.Height; stride = w * 4; row = new byte[stride];
-                            writer = Open(mp4, w, h, fps);
+                            int audioStream;
+                            writer = Open(mp4, w, h, fps, wavSource != null ? AudioRecorder.Rate : 0, AudioRecorder.Channels, out audioStream);
+                            if (wavSource != null) feed = new AudioFeed(wavSource, writer, audioStream, AudioRecorder.Rate, AudioRecorder.Channels * 2);
                         }
                         else if (bmp.Width != w || bmp.Height != h) continue;   // recordings have a fixed size; ignore strays
 
+                        if (feed != null) feed.Pump(frameNo * duration);          // keep the sound level with the pictures
                         WriteFrame(writer, bmp, row, frameNo * duration, duration);
                         frameNo++;
                     }
                 }
                 if (writer != null)
                 {
+                    if (frameNo > 0 && wavSource != null && feed != null) feed.Drain();
                     Check(writer.Finalize_());
                     Marshal.ReleaseComObject(writer);
                 }
@@ -63,10 +81,190 @@ namespace RXCapture
             catch { ok = false; }
             finally
             {
+                if (wavSource != null) wavSource.Dispose();
                 if (started) try { MFShutdown(); } catch { }
                 if (!ok) try { File.Delete(mp4); } catch { }
             }
             return ok && File.Exists(mp4);
+        }
+
+        // ------------------------------------------------------------------ audio track
+
+        /// <summary>PCM to be written as the audio track: chunks of 16-bit samples with their start time (100 ns).</summary>
+        public interface IAudioSource { bool Next(out byte[] pcm, out long time); }
+
+        /// <summary>The WAV written by <see cref="AudioRecorder"/> (44-byte header, then PCM), handed out in 100 ms chunks.</summary>
+        sealed class WavSource : IAudioSource, IDisposable
+        {
+            FileStream fs; long frames;
+            public WavSource(string path) { fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite); fs.Seek(AudioRecorder.WavHeader, SeekOrigin.Begin); }
+            public bool Next(out byte[] pcm, out long time)
+            {
+                int align = AudioRecorder.Channels * 2, want = AudioRecorder.Rate / 10 * align;
+                var b = new byte[want];
+                int got = 0, n;
+                while (got < want && (n = fs.Read(b, got, want - got)) > 0) got += n;
+                got -= got % align;
+                time = frames * 10000000L / AudioRecorder.Rate;
+                if (got <= 0) { pcm = null; return false; }
+                if (got < want) Array.Resize(ref b, got);
+                pcm = b; frames += got / align;
+                return true;
+            }
+            public void Dispose() { if (fs != null) { fs.Dispose(); fs = null; } }
+        }
+
+        /// <summary>Hands audio to the sink writer in step with the pictures (the writer wants both streams in time order).</summary>
+        sealed class AudioFeed
+        {
+            readonly IAudioSource src; readonly IMFSinkWriter writer; readonly int stream, rate, blockAlign;
+            byte[] pend; long pendTime; bool has, done;
+
+            public AudioFeed(IAudioSource src, IMFSinkWriter writer, int stream, int rate, int blockAlign)
+            { this.src = src; this.writer = writer; this.stream = stream; this.rate = rate; this.blockAlign = blockAlign; }
+
+            /// <summary>Writes every chunk that starts at or before <paramref name="upTo"/> (100 ns).</summary>
+            public void Pump(long upTo)
+            {
+                while (true)
+                {
+                    if (!has)
+                    {
+                        if (done) return;
+                        if (!src.Next(out pend, out pendTime)) { done = true; return; }
+                        has = true;
+                    }
+                    if (pendTime > upTo) return;
+                    Write(pend, pendTime); has = false;
+                }
+            }
+
+            public void Drain() { Pump(long.MaxValue); }
+
+            void Write(byte[] pcm, long time)
+            {
+                IMFMediaBuffer buf; Check(MFCreateMemoryBuffer(pcm.Length, out buf));
+                IntPtr dst; int max, cur; Check(buf.Lock(out dst, out max, out cur));
+                Marshal.Copy(pcm, 0, dst, pcm.Length);
+                Check(buf.Unlock()); Check(buf.SetCurrentLength(pcm.Length));
+                IMFSample sample; Check(MFCreateSample(out sample));
+                Check(sample.AddBuffer(buf));
+                Check(sample.SetSampleTime(time));
+                Check(sample.SetSampleDuration((long)(pcm.Length / blockAlign) * 10000000L / rate));
+                Check(writer.WriteSample(stream, sample));
+                Marshal.ReleaseComObject(sample); Marshal.ReleaseComObject(buf);
+            }
+        }
+
+        const int FirstAudioStream = -3;
+
+        /// <summary>Decodes the sound of an MP4 to 16-bit PCM (for trimming and for playback). <see cref="TryOpen"/> gives null for a file without sound.</summary>
+        public sealed class AudioReader : IDisposable, IAudioSource
+        {
+            IMFSourceReader reader; bool started;
+            public int Rate { get; private set; }
+            public int Channels { get; private set; }
+            public int BlockAlign { get { return Channels * 2; } }
+
+            AudioReader() { }
+
+            public static AudioReader TryOpen(string path)
+            {
+                var a = new AudioReader();
+                try
+                {
+                    if (MFStartup(MfVersion, 0) != 0) return null;
+                    a.started = true;
+                    IMFAttributes attrs; Check(MFCreateAttributes(out attrs, 1));
+                    if (MFCreateSourceReaderFromURL(path, attrs, out a.reader) < 0) { a.Dispose(); return null; }
+                    if (a.reader.SetStreamSelection(AllStreams, false) < 0 || a.reader.SetStreamSelection(FirstAudioStream, true) < 0) { a.Dispose(); return null; }
+                    IMFMediaType want; Check(MFCreateMediaType(out want));
+                    Check(want.SetGUID(MajorType, MediaAudio));
+                    Check(want.SetGUID(Subtype, FormatPcm));
+                    Check(want.SetUINT32(AudioBits, 16));
+                    if (a.reader.SetCurrentMediaType(FirstAudioStream, IntPtr.Zero, want) < 0) { a.Dispose(); return null; }
+                    IMFMediaType cur; Check(a.reader.GetCurrentMediaType(FirstAudioStream, out cur));
+                    int rate, ch, bits;
+                    Check(cur.GetUINT32(AudioRate, out rate)); Check(cur.GetUINT32(AudioChannels, out ch));
+                    if (cur.GetUINT32(AudioBits, out bits) != 0) bits = 16;
+                    if (bits != 16 || ch < 1 || ch > 2 || rate < 8000) { a.Dispose(); return null; }
+                    a.Rate = rate; a.Channels = ch;
+                    return a;
+                }
+                catch { a.Dispose(); return null; }
+            }
+
+            public void Seek(TimeSpan t)
+            {
+                IntPtr pv = Marshal.AllocHGlobal(32);
+                try
+                {
+                    for (int i = 0; i < 32; i += 8) Marshal.WriteInt64(pv, i, 0);
+                    Marshal.WriteInt16(pv, 0, 20);                       // VT_I8
+                    Marshal.WriteInt64(pv, 8, Math.Max(0, t.Ticks));
+                    Check(reader.SetCurrentPosition(Guid.Empty, pv));
+                }
+                finally { Marshal.FreeHGlobal(pv); }
+            }
+
+            /// <summary>The next decoded chunk and its start time (100 ns). False at the end.</summary>
+            public bool Next(out byte[] pcm, out long time)
+            {
+                pcm = null; time = 0;
+                while (true)
+                {
+                    int idx, flags; long ts; IMFSample sample;
+                    Check(reader.ReadSample(FirstAudioStream, 0, out idx, out flags, out ts, out sample));
+                    if ((flags & EndOfStream) != 0) { if (sample != null) Marshal.ReleaseComObject(sample); return false; }
+                    if (sample == null) continue;
+                    IMFMediaBuffer buf = null;
+                    try
+                    {
+                        Check(sample.ConvertToContiguousBuffer(out buf));
+                        IntPtr p; int max, len; Check(buf.Lock(out p, out max, out len));
+                        try { pcm = new byte[len]; Marshal.Copy(p, pcm, 0, len); } finally { buf.Unlock(); }
+                    }
+                    finally { if (buf != null) Marshal.ReleaseComObject(buf); Marshal.ReleaseComObject(sample); }
+                    time = ts;
+                    return true;
+                }
+            }
+
+            public void Dispose()
+            {
+                if (reader != null) { try { Marshal.ReleaseComObject(reader); } catch { } reader = null; }
+                if (started) { started = false; try { MFShutdown(); } catch { } }
+            }
+        }
+
+        /// <summary>The part [start, end) of a file's sound, moved to start at 0 - what a trim keeps.</summary>
+        sealed class TrimmedAudio : IAudioSource
+        {
+            readonly AudioReader src; readonly long start, end;
+            public TrimmedAudio(AudioReader src, TimeSpan start, TimeSpan end) { this.src = src; this.start = start.Ticks; this.end = end.Ticks; src.Seek(start); }
+            public bool Next(out byte[] pcm, out long time)
+            {
+                while (src.Next(out pcm, out time))
+                {
+                    int align = src.BlockAlign;
+                    long dur = (long)(pcm.Length / align) * 10000000L / src.Rate;
+                    if (time + dur <= start) continue;
+                    if (time >= end) return false;
+                    int from = 0, to = pcm.Length / align;
+                    if (time < start) from = (int)((start - time) * src.Rate / 10000000L);
+                    if (time + dur > end) to = (int)((end - time) * src.Rate / 10000000L);
+                    if (to <= from) continue;
+                    if (from > 0 || to < pcm.Length / align)
+                    {
+                        var cut = new byte[(to - from) * align];
+                        Buffer.BlockCopy(pcm, from * align, cut, 0, cut.Length);
+                        pcm = cut;
+                    }
+                    time = Math.Max(time, start) - start;
+                    return true;
+                }
+                return false;
+            }
         }
 
         static readonly Guid EnableVideoProcessing = new Guid("fb394f3d-ccf1-42ee-bbb3-f9b845d5681d");
@@ -79,6 +277,7 @@ namespace RXCapture
         {
             first = null; kept = TimeSpan.Zero;
             bool started = false, ok = false;
+            AudioReader audio = null;
             try
             {
                 if (MFStartup(MfVersion, 0) != 0) return false;
@@ -89,16 +288,22 @@ namespace RXCapture
                     int w = rd.Width, h = rd.Height, fps = rd.Fps;
                     long frameDur = 10000000L / fps, s100 = start.Ticks, e100 = end.Ticks;
                     var row = new byte[w * 4];
-                    var writer = Open(dst, w, h, fps);
+                    audio = AudioReader.TryOpen(src);                       // null when the video has no sound
+                    int audioStream;
+                    var writer = Open(dst, w, h, fps, audio != null ? audio.Rate : 0, audio != null ? audio.Channels : 0, out audioStream);
+                    AudioFeed feed = audio == null ? null : new AudioFeed(new TrimmedAudio(audio, start, end), writer, audioStream, audio.Rate, audio.BlockAlign);
                     int written = 0; TimeSpan ts;
                     while (rd.ReadFrame(frame, out ts))
                     {
                         if (ts.Ticks >= e100) break;
                         if (ts.Ticks + frameDur <= s100) continue;
                         if (first == null) first = new Bitmap(frame);
-                        WriteFrame(writer, frame, row, Math.Max(0, ts.Ticks - s100), frameDur);
+                        long outTime = Math.Max(0, ts.Ticks - s100);
+                        if (feed != null) feed.Pump(outTime);
+                        WriteFrame(writer, frame, row, outTime, frameDur);
                         written++;
                     }
+                    if (feed != null && written > 0) feed.Drain();
                     Check(writer.Finalize_());
                     Marshal.ReleaseComObject(writer);
                     kept = TimeSpan.FromTicks(written * frameDur);
@@ -108,6 +313,7 @@ namespace RXCapture
             catch { ok = false; }
             finally
             {
+                if (audio != null) audio.Dispose();
                 if (started) try { MFShutdown(); } catch { }
                 if (!ok) { try { File.Delete(dst); } catch { } if (first != null) { first.Dispose(); first = null; } }
             }
@@ -277,8 +483,10 @@ namespace RXCapture
             }
         }
 
-        static IMFSinkWriter Open(string mp4, int w, int h, int fps)
+        /// <summary>Opens the MP4 writer: stream 0 is H.264 video; with <paramref name="audioRate"/> &gt; 0 a second stream takes AAC sound.</summary>
+        static IMFSinkWriter Open(string mp4, int w, int h, int fps, int audioRate, int audioChannels, out int audioStream)
         {
+            audioStream = -1;
             IMFSinkWriter writer;
             Check(MFCreateSinkWriterFromURL(mp4, IntPtr.Zero, IntPtr.Zero, out writer));
             int bitrate = (int)Math.Min(40000000L, Math.Max(1000000L, (long)w * h * fps / 4));   // ~0.25 bit per pixel: screen text stays crisp
@@ -301,8 +509,35 @@ namespace RXCapture
             Check(input.SetUINT64(FrameRate, ((ulong)fps << 32) | 1u));
             Check(input.SetUINT64(PixelAspect, (1UL << 32) | 1u));
             Check(writer.SetInputMediaType(stream, input, null));
-            Check(writer.BeginWriting());
             Marshal.ReleaseComObject(output); Marshal.ReleaseComObject(input);
+
+            if (audioRate > 0)
+            {
+                // AAC-LC, 160 kbit/s (the encoder accepts 96/128/160/192 kbit/s)
+                IMFMediaType aout; Check(MFCreateMediaType(out aout));
+                Check(aout.SetGUID(MajorType, MediaAudio));
+                Check(aout.SetGUID(Subtype, FormatAac));
+                Check(aout.SetUINT32(AudioBits, 16));
+                Check(aout.SetUINT32(AudioRate, audioRate));
+                Check(aout.SetUINT32(AudioChannels, audioChannels));
+                Check(aout.SetUINT32(AudioBytesPerSec, 20000));
+                Check(aout.SetUINT32(AudioBlockAlign, 1));
+                Check(aout.SetUINT32(AacPayload, 0));
+                Check(aout.SetUINT32(AacProfileLevel, 0x29));
+                Check(writer.AddStream(aout, out audioStream));
+
+                IMFMediaType ain; Check(MFCreateMediaType(out ain));
+                Check(ain.SetGUID(MajorType, MediaAudio));
+                Check(ain.SetGUID(Subtype, FormatPcm));
+                Check(ain.SetUINT32(AudioBits, 16));
+                Check(ain.SetUINT32(AudioRate, audioRate));
+                Check(ain.SetUINT32(AudioChannels, audioChannels));
+                Check(ain.SetUINT32(AudioBlockAlign, audioChannels * 2));
+                Check(ain.SetUINT32(AudioBytesPerSec, audioRate * audioChannels * 2));
+                Check(writer.SetInputMediaType(audioStream, ain, null));
+                Marshal.ReleaseComObject(aout); Marshal.ReleaseComObject(ain);
+            }
+            Check(writer.BeginWriting());
             return writer;
         }
 

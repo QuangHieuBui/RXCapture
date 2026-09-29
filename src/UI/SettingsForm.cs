@@ -31,7 +31,7 @@ namespace RXCapture
         Panel cur;
 
         ComboBox cbLang, cbFormat, cbEffect, cbVFormat;
-        CheckBox chStartup, chTray, chMinTray, chWidget, chEditorMax, chCursor, chMag, chImmediate, chAllMon, chSound, chWShadow, chWCorners, chWFull, chEditor, chClip, chAuto, chVCursor;
+        CheckBox chRecMic, chRecSys, chStartup, chTray, chMinTray, chWidget, chEditorMax, chCursor, chMag, chImmediate, chAllMon, chSound, chWShadow, chWCorners, chWFull, chEditor, chClip, chAuto, chVCursor;
         NumericUpDown nLib, nDelay, nFixW, nFixH, nJpeg, nFps, nGif;
         TextBox tbFolder, tbPattern;
         readonly Dictionary<string, HotkeyBox> hk = new Dictionary<string, HotkeyBox>();
@@ -87,9 +87,11 @@ namespace RXCapture
             Page("Video");
             nFps = Num("Frames per second", 5, 30, cfg.VideoFps);
             chVCursor = Check("Record the mouse cursor", cfg.VideoCursor);
+            chRecMic = Check("Record the microphone", cfg.RecordMic);
+            chRecSys = Check("Record the computer sound (speakers)", cfg.RecordSystemSound);
             cbVFormat = Combo("Output format", new[] { "AVI (Motion-JPEG)", "GIF (animated)", "MP4 (H.264)" }, cfg.VideoFormat == "gif" ? 1 : (cfg.VideoFormat == "mp4" ? 2 : 0));
             nGif = Num("GIF maximum width (px)", 160, 4000, cfg.GifMaxWidth);
-            Note("MP4 uses the H.264 encoder built into Windows; ffmpeg.exe next to RXCapture.exe is only a fallback.");
+            Note("MP4 uses the H.264 encoder built into Windows; ffmpeg.exe next to RXCapture.exe is only a fallback. Videos with sound are always saved as MP4 (AAC); the microphone and speaker buttons are also on the recorder bar.");
 
             Page("Editor");
             chEditorMax = Check("Open the editor maximized (full screen)", cfg.EditorMaximized);
@@ -195,7 +197,7 @@ namespace RXCapture
             cfg.JpegQuality = (int)nJpeg.Value; cfg.FileNamePattern = tbPattern.Text; cfg.Effect = (AfterEffect)cbEffect.SelectedIndex;
             cfg.HkAllInOne = hk["HkAllInOne"].Text; cfg.HkRegion = hk["HkRegion"].Text; cfg.HkWindow = hk["HkWindow"].Text; cfg.HkFullScreen = hk["HkFullScreen"].Text;
             cfg.HkScroll = hk["HkScroll"].Text; cfg.HkFreehand = hk["HkFreehand"].Text; cfg.HkRepeat = hk["HkRepeat"].Text; cfg.HkVideo = hk["HkVideo"].Text;
-            cfg.VideoFps = (int)nFps.Value; cfg.VideoCursor = chVCursor.Checked; cfg.VideoFormat = new[] { "avi", "gif", "mp4" }[cbVFormat.SelectedIndex]; cfg.GifMaxWidth = (int)nGif.Value;
+            cfg.VideoFps = (int)nFps.Value; cfg.VideoCursor = chVCursor.Checked; cfg.RecordMic = chRecMic.Checked; cfg.RecordSystemSound = chRecSys.Checked; cfg.VideoFormat = new[] { "avi", "gif", "mp4" }[cbVFormat.SelectedIndex]; cfg.GifMaxWidth = (int)nGif.Value;
             cfg.Save();
         }
     }

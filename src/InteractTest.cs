@@ -700,6 +700,96 @@ namespace RXCapture
             host.Close();
             return failed;
         }
+        static readonly System.Reflection.BindingFlags Flg = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance;
+
+        /// <summary>Records through the real recorder bar with the Speaker button, plays a quiet tone, mutes the speaker part-way and checks
+        /// that the saved video has a sound track with the tone first and silence after the mute. GIF is chosen on purpose: sound forces MP4.</summary>
+        static int SoundCheck(System.Text.StringBuilder log)
+        {
+            var cfg = AppSettings.Current;
+            string fmt = cfg.VideoFormat; bool mic = cfg.RecordMic, spk = cfg.RecordSystemSound;
+            int failed = 0;
+            try
+            {
+                cfg.VideoFormat = "gif"; cfg.RecordMic = false; cfg.RecordSystemSound = false;
+                var tone = new MemoryStream();
+                {
+                    int rate = 44100, n = rate * 6;
+                    var bw = new BinaryWriter(tone);
+                    bw.Write(new[] { (byte)'R', (byte)'I', (byte)'F', (byte)'F' }); bw.Write(36 + n * 2);
+                    bw.Write(new[] { (byte)'W', (byte)'A', (byte)'V', (byte)'E', (byte)'f', (byte)'m', (byte)'t', (byte)' ' });
+                    bw.Write(16); bw.Write((short)1); bw.Write((short)1); bw.Write(rate); bw.Write(rate * 2); bw.Write((short)2); bw.Write((short)16);
+                    bw.Write(new[] { (byte)'d', (byte)'a', (byte)'t', (byte)'a' }); bw.Write(n * 2);
+                    for (int i = 0; i < n; i++) bw.Write((short)(Math.Sin(2 * Math.PI * 1000 * i / rate) * 6000));
+                    bw.Flush(); tone.Position = 0;
+                }
+                int before = LibraryStore.List().Count(i => i.IsVideo);
+                var prim = Screen.PrimaryScreen.Bounds;
+                var region = new Rectangle(prim.X + 200, prim.Y + 200, 640, 360);
+                var player = new System.Media.SoundPlayer(tone);
+                var t = new System.Windows.Forms.Timer { Interval = 1000 };
+                int tick = 0; bool micDisabledWhileRecording = false, muteClicked = false;
+                t.Tick += delegate
+                {
+                    var rf = Application.OpenForms.OfType<RecorderForm>().FirstOrDefault();
+                    if (rf == null) return;
+                    tick++;
+                    var btnSpk = (Button)typeof(RecorderForm).GetField("btnSpk", Flg).GetValue(rf);
+                    var btnMic = (Button)typeof(RecorderForm).GetField("btnMic", Flg).GetValue(rf);
+                    if (tick == 1) { btnSpk.PerformClick(); rf.RecClicked(); }       // switch the speaker on, then start the countdown
+                    if (tick == 5) player.Play();                                    // recording is running by now
+                    if (tick == 7) { micDisabledWhileRecording = !btnMic.Enabled; btnSpk.PerformClick(); muteClicked = true; }   // mute the speaker
+                    if (tick == 10) { rf.StopClicked(); t.Stop(); }
+                };
+                t.Start();
+                VideoRecorder.Run(region);
+                t.Stop(); player.Stop();
+                var vids = LibraryStore.List().Where(i => i.IsVideo).ToList();
+                bool added = vids.Count == before + 1;
+                log.AppendLine((added ? "PASS " : "FAIL ") + "video with sound recorded (library videos " + before + " -> " + vids.Count + ")");
+                if (!added) return 1;
+                var v = vids[0];
+                bool ok = cfg.RecordSystemSound && v.Ext == "mp4";
+                log.AppendLine((ok ? "PASS " : "FAIL ") + "the Speaker button switched the sound on, and a GIF setting became MP4 (" + v.Ext + ")");
+                if (!ok) failed++;
+                ok = micDisabledWhileRecording && muteClicked;
+                log.AppendLine((ok ? "PASS " : "FAIL ") + "while recording, a source that was off at the start is greyed out (Mic disabled = " + micDisabledWhileRecording + ")");
+                if (!ok) failed++;
+                using (var ar = Mp4Writer.AudioReader.TryOpen(v.File))
+                {
+                    ok = ar != null;
+                    log.AppendLine((ok ? "PASS " : "FAIL ") + "the MP4 has a sound track");
+                    if (!ok) failed++;
+                    else
+                    {
+                        var rmsWin = new System.Collections.Generic.List<double>(); var sum = new System.Collections.Generic.List<double>(); var cnt = new System.Collections.Generic.List<int>();
+                        byte[] pcm; long tm;
+                        while (ar.Next(out pcm, out tm))
+                            for (int f = 0; f < pcm.Length / ar.BlockAlign; f++)
+                            {
+                                int win = (int)((tm * ar.Rate / 10000000L + f) / (ar.Rate / 10));
+                                while (sum.Count <= win) { sum.Add(0); cnt.Add(0); }
+                                double s = BitConverter.ToInt16(pcm, f * ar.BlockAlign) / 32768.0; sum[win] += s * s; cnt[win]++;
+                            }
+                        for (int i = 0; i < sum.Count; i++) rmsWin.Add(cnt[i] > 0 ? Math.Sqrt(sum[i] / cnt[i]) : 0);
+                        int firstLoud = rmsWin.FindIndex(x => x > 0.02), lastLoud = rmsWin.FindLastIndex(x => x > 0.02);
+                        double tail = 0; int tn = 0;
+                        for (int i = Math.Max(0, rmsWin.Count - 10); i < rmsWin.Count; i++) { tail += rmsWin[i]; tn++; }
+                        log.AppendLine("  sound: " + rmsWin.Count / 10.0 + " s, tone from " + firstLoud / 10.0 + " s to " + (lastLoud + 1) / 10.0 + " s, last second rms " + (tn > 0 ? tail / tn : 0).ToString("0.0000"));
+                        ok = firstLoud >= 0 && lastLoud - firstLoud >= 8;                                  // at least ~1 s of tone was recorded
+                        log.AppendLine((ok ? "PASS " : "FAIL ") + "the tone played through the speakers is in the video");
+                        if (!ok) failed++;
+                        ok = tn > 0 && tail / tn < 0.003;
+                        log.AppendLine((ok ? "PASS " : "FAIL ") + "after Mute the last second of the video is silent although the tone was still playing");
+                        if (!ok) failed++;
+                    }
+                }
+                LibraryStore.Delete(v);
+            }
+            finally { cfg.VideoFormat = fmt; cfg.RecordMic = mic; cfg.RecordSystemSound = spk; cfg.Save(); }
+            return failed;
+        }
+
         public static int Run(string logPath)
         {
             var log = new System.Text.StringBuilder();
@@ -762,6 +852,7 @@ namespace RXCapture
                 if (fmt != "gif") { failed += PlaybackCheck(v, fmt, log); failed += TrimCheck(v, fmt, log); }
                 LibraryStore.Delete(v);
             }
+            failed += SoundCheck(log);
             log.AppendLine(failed == 0 ? "ALL VIDEO TESTS PASSED" : failed + " FAILED");
             File.WriteAllText(logPath ?? "video.log", log.ToString());
             return failed == 0 ? 0 : 1;

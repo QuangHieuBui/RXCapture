@@ -11,3 +11,7 @@ obj/
 Thumbs.db
 desktop.ini
 dist/
+
+# every released version is kept in git (installer, portable zip, checksum, certificate)
+!releases/
+!releases/**

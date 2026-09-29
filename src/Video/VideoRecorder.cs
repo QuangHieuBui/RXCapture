@@ -51,6 +51,7 @@ namespace RXCapture
             try
             {
                 string fmt = cfg.VideoFormat;
+                if (r.WavPath != null) fmt = "mp4";                    // only MP4 carries sound
                 if (fmt == "gif")
                 {
                     string gif = Path.ChangeExtension(r.AviPath, ".gif");
@@ -64,7 +65,12 @@ namespace RXCapture
                     using (var wait = new BusyForm(Loc.T("Converting to MP4…")))
                     {
                         wait.Show(); Application.DoEvents();
-                        done = Mp4Writer.Convert(r.AviPath, mp4, r.Fps);                       // Windows' own H.264 encoder
+                        done = Mp4Writer.Convert(r.AviPath, mp4, r.Fps, r.WavPath);           // Windows' own H.264 (+ AAC) encoder
+                        if (!done && r.WavPath != null)
+                        {
+                            done = Mp4Writer.Convert(r.AviPath, mp4, r.Fps);                   // no AAC encoder: keep the picture at least
+                            if (done) App.Balloon(Loc.T("The sound could not be added to the video."));
+                        }
                         string ff = done ? null : FindFfmpeg();                                // fallback when Windows has none (N editions)
                         if (!done && ff != null) done = RunFfmpeg(ff, r.AviPath, mp4);
                     }
@@ -76,7 +82,11 @@ namespace RXCapture
                 App.Balloon(Loc.T("Video saved to the library"));
             }
             catch (Exception ex) { MessageBox.Show(ex.Message, "RXCapture", MessageBoxButtons.OK, MessageBoxIcon.Error); }
-            finally { if (r.FirstFrame != null) r.FirstFrame.Dispose(); }
+            finally
+            {
+                if (r.FirstFrame != null) r.FirstFrame.Dispose();
+                if (r.WavPath != null) try { File.Delete(r.WavPath); } catch { }
+            }
         }
 
         public static string FindFfmpeg()
@@ -142,6 +152,7 @@ namespace RXCapture
     public class RecordingResult
     {
         public string AviPath;
+        public string WavPath;          // the recorded sound (48 kHz stereo WAV), null for a silent recording
         public Bitmap FirstFrame;
         public double Seconds;
         public int Fps;
@@ -208,7 +219,9 @@ namespace RXCapture
         readonly Rectangle region;
         readonly AppSettings cfg = AppSettings.Current;
         readonly FrameForm frame;
-        readonly Button btnRec = new Button(), btnStop = new Button(), btnCancel = new Button();
+        readonly Button btnRec = new Button(), btnStop = new Button(), btnCancel = new Button(), btnMic = new Button(), btnSpk = new Button();
+        AudioRecorder audio;
+        string wavPath;
         readonly Label lblTime = new Label();
         readonly Timer ui = new Timer { Interval = 200 };
         readonly Stopwatch sw = new Stopwatch();
@@ -229,20 +242,26 @@ namespace RXCapture
             StartPosition = FormStartPosition.Manual;
             BackColor = Color.FromArgb(37, 37, 40);
             Font = new Font("Segoe UI", 9.5f);
-            Size = new Size(800, 76);
+            Size = new Size(1000, 76);
 
-            btnRec.SetBounds(10, 10, 170, 56); btnStop.SetBounds(186, 10, 220, 56); btnCancel.SetBounds(412, 10, 170, 56);
+            btnRec.SetBounds(10, 10, 140, 56); btnStop.SetBounds(156, 10, 190, 56); btnCancel.SetBounds(352, 10, 140, 56);
+            btnMic.SetBounds(498, 10, 110, 56); btnSpk.SetBounds(614, 10, 150, 56);
             Setup(btnRec, "record", Loc.T("Record"), Loc.T("Record / Pause")); Setup(btnStop, "stop", Loc.T("Stop & save"), Loc.T("Stop and save")); Setup(btnCancel, "close", Loc.T("Discard"), Loc.T("Discard"));
+            Setup(btnMic, "mic", Loc.T("Mic"), Loc.T("Record the microphone (before you press Record)"));
+            Setup(btnSpk, "speaker", Loc.T("Speaker"), Loc.T("Record the computer sound (before you press Record)"));
+            btnMic.Click += (s, e) => { if (started) { if (audio != null && audio.MicOk) audio.MicMuted = !audio.MicMuted; } else { cfg.RecordMic = !cfg.RecordMic; cfg.Save(); } ShowToggles(); };
+            btnSpk.Click += (s, e) => { if (started) { if (audio != null && audio.SystemOk) audio.SystemMuted = !audio.SystemMuted; } else { cfg.RecordSystemSound = !cfg.RecordSystemSound; cfg.Save(); } ShowToggles(); };
+            ShowToggles();
             btnStop.Enabled = false;
             btnRec.Click += (s, e) => RecClicked();
             btnStop.Click += (s, e) => StopClicked();
             btnCancel.Click += (s, e) => { cancelled = true; StopWorker(); Close(); };
-            lblTime.SetBounds(596, 0, 196, 76); lblTime.ForeColor = Color.White; lblTime.TextAlign = ContentAlignment.MiddleLeft;
+            lblTime.SetBounds(772, 0, 224, 76); lblTime.ForeColor = Color.White; lblTime.TextAlign = ContentAlignment.MiddleLeft;
             lblTime.Font = new Font("Segoe UI", 13f, FontStyle.Bold);
             lblTime.Text = Loc.T("Ready") + "  " + region.Width + "×" + region.Height;
             lblTime.MouseDown += (s, e) => { if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); } };   // drag the bar by its label
             lblTime.Cursor = Cursors.SizeAll;
-            Controls.Add(btnRec); Controls.Add(btnStop); Controls.Add(btnCancel); Controls.Add(lblTime);
+            Controls.Add(btnRec); Controls.Add(btnStop); Controls.Add(btnCancel); Controls.Add(btnMic); Controls.Add(btnSpk); Controls.Add(lblTime);
 
             frame = new FrameForm(region, 3);
             Location = BarLocation(region, Size, Screen.FromRectangle(region).WorkingArea);
@@ -303,9 +322,41 @@ namespace RXCapture
                 return;
             }
             paused = !paused;
-            if (paused) { sw.Stop(); SetRec("record", Loc.T("Resume")); frame.Recording = false; }
-            else { sw.Start(); SetRec("pause", Loc.T("Pause")); frame.Recording = true; }
+            if (paused) { if (audio != null) audio.Paused = true; sw.Stop(); SetRec("record", Loc.T("Resume")); frame.Recording = false; }
+            else { sw.Start(); if (audio != null) audio.Paused = false; SetRec("pause", Loc.T("Pause")); frame.Recording = true; }
             frame.Invalidate();
+        }
+
+        /// <summary>Mic / Speaker buttons. Before recording they switch the source on or off; while recording they mute / un-mute the
+        /// sources that were opened (a source that was off at the start cannot be added any more).</summary>
+        void ShowToggles()
+        {
+            bool micOn = started ? (audio != null && audio.MicOk && !audio.MicMuted) : cfg.RecordMic;
+            bool spkOn = started ? (audio != null && audio.SystemOk && !audio.SystemMuted) : cfg.RecordSystemSound;
+            Toggle(btnMic, "mic", micOn, started && !(audio != null && audio.MicOk));
+            Toggle(btnSpk, "speaker", spkOn, started && !(audio != null && audio.SystemOk));
+        }
+
+        static void Toggle(Button b, string icon, bool on, bool unavailable)
+        {
+            b.Image = Icons.Get(on ? icon : icon + "_off", 34, true);
+            b.BackColor = on ? Theme.Accent : Color.FromArgb(60, 60, 64);
+            b.ForeColor = on ? Color.White : Color.FromArgb(175, 175, 180);
+            b.Enabled = !unavailable;
+        }
+
+        void StartAudio()
+        {
+            wavPath = Path.Combine(Path.GetTempPath(), "rxcapture_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".wav");
+            audio = new AudioRecorder();
+            bool ok = audio.Start(wavPath, cfg.RecordMic, cfg.RecordSystemSound, () => sw.ElapsedMilliseconds);
+            if (!string.IsNullOrEmpty(audio.Problem)) App.Balloon(Loc.T("Sound: ") + audio.Problem);
+            if (!ok)
+            {
+                audio.Dispose(); audio = null;
+                try { File.Delete(wavPath); } catch { }
+                wavPath = null;
+            }
         }
 
         void CountdownTick()
@@ -323,6 +374,8 @@ namespace RXCapture
             SetRec("pause", Loc.T("Pause"));
             frame.Recording = true; frame.Invalidate();
             aviPath = Path.Combine(Path.GetTempPath(), "rxcapture_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".avi");
+            if (cfg.RecordMic || cfg.RecordSystemSound) StartAudio();      // before the clock starts: opening the devices takes a moment
+            ShowToggles();
             sw.Start();
             worker = new Thread(CaptureLoop) { IsBackground = true, Priority = ThreadPriority.AboveNormal };
             worker.Start();
@@ -377,6 +430,7 @@ namespace RXCapture
         {
             stopFlag = true; sw.Stop();
             if (worker != null) worker.Join(5000);
+            if (audio != null) audio.Stop();                       // writes the last of the sound up to the stopped clock, closes the WAV
         }
 
         public void StopClicked()
@@ -387,6 +441,7 @@ namespace RXCapture
             if (!cancelled && File.Exists(aviPath) && framesWritten > 0)
             {
                 Result = new RecordingResult { AviPath = aviPath, FirstFrame = first, Seconds = Math.Max(1, sw.Elapsed.TotalSeconds), Fps = Math.Max(5, Math.Min(30, cfg.VideoFps)) };
+                if (audio != null && audio.FramesWritten > 0 && wavPath != null && File.Exists(wavPath)) Result.WavPath = wavPath;
                 first = null;
             }
             Close();
@@ -398,6 +453,11 @@ namespace RXCapture
             cd.Stop(); ui.Stop();
             stopFlag = true;
             frame.Close();
+            if (audio != null) { try { audio.Dispose(); } catch { } }
+            if (Result == null || Result.WavPath == null)
+            {
+                try { if (wavPath != null && File.Exists(wavPath)) File.Delete(wavPath); } catch { }
+            }
             if (Result == null)
             {
                 try { if (worker != null) worker.Join(3000); if (aviPath != null && File.Exists(aviPath)) File.Delete(aviPath); } catch { }

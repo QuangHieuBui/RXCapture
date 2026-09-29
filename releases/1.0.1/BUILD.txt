@@ -1,0 +1,4 @@
+﻿RXCapture 1.0.1
+Built:   2026-09-29
+Source:  git a38b942 (tools/sign.ps1 commit; 7b22684 only adds README text)
+SHA-256: 2F1450D26F03D989A8764E4AC53B9B30CC40B120EDBCAC40A6FF53B3DA2093AB  (RXCapture-Setup-1.0.1.exe)

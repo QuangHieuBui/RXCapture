@@ -19,6 +19,8 @@ powershell -ExecutionPolicy Bypass -File build-setup.ps1 [-Version 1.0.1]
 ```
 Tạo `dist\RXCapture-Setup-<phiên bản>.exe` (~0,6 MB, tự chứa toàn bộ ứng dụng; chỉ cần `csc.exe` có sẵn của Windows). Bấm đúp file này để cài: chọn thư mục (mặc định `%LOCALAPPDATA%\Programs\RXCapture`), tùy chọn biểu tượng ở màn hình nền, chạy cùng Windows và chạy ngay sau khi cài. Cài cho tài khoản hiện tại, **không cần quyền quản trị**; có mục trong *Settings > Apps* để gỡ, và `Uninstall.exe` trong thư mục cài (hỏi có xóa luôn cài đặt/thư viện hay không). Dòng lệnh: `/S` (im lặng), `/D=<thư mục>`, `/nodesktop`, `/startup` (chạy cùng Windows), `/launch`; gỡ im lặng: `Uninstall.exe /uninstall /S [/removedata]`. Cài đè lên bản cũ sẽ tự tắt RXCapture đang chạy từ thư mục đó và giữ nguyên dữ liệu.
 
+**Lưu từng phiên bản trên git:** mỗi lần `build-setup.ps1` chạy, bản dựng còn được chép vào `releases<phiên bản>` (file cài đặt, bản portable `.zip` chỉ gồm `RXCapture.exe` + `.config`, `.sha256`, chứng chỉ công khai `.cer`, `BUILD.txt` ghi commit và ngày build). Thư mục này **được commit lên git** để giữ lịch sử và dùng lại bản cũ. Một thư mục phiên bản đã có sẽ không bị ghi đè: muốn build bản mới hãy tăng `-Version` (ví dụ `-Version 1.0.2`); `-Force` mới cho ghi đè, `-NoRelease` để build mà không lưu.
+
 ## Phím tắt toàn cục (đổi được trong Settings > Hotkeys)
 | Phím | Chức năng |
 |---|---|
@@ -36,6 +38,7 @@ Nếu Windows đã giữ Print Screen cho Snipping Tool, hãy tắt tùy chọn 
 ## Cửa sổ Capture
 - 4 tab: **All-in-One**, **Image** (Selection: Region / Window / Full Screen / Scrolling / Freehand / Fixed / Repeat), **Video** (Region / Window / Full Screen, định dạng, FPS), **Presets**.
 - **Share** (Editor / Clipboard / File / Editor + Clipboard), **Effects**, **Timer**, **Include cursor**, nút **Capture** đỏ.
+- **Quay video có tiếng**: nút **MIC** (micro) và **SPEAKER** (âm thanh phát ra từ máy tính - loa) trên thanh quay video, có thể trộn cả hai. Bật/tắt trước khi bấm Record; khi đang quay, bấm để **tắt tiếng / bật lại** (nguồn nào không bật lúc bắt đầu thì không thêm được giữa chừng). Tiếng đi theo đồng hồ quay nên khớp hình, tạm dừng không ghi tiếng. Lưu ở MP4 (AAC), Editor phát được tiếng và cắt video vẫn giữ tiếng.
 - **Presets**: lưu cấu hình hiện tại (loại chụp + đầu ra + hiệu ứng + hẹn giờ), đổi tên, xóa, gán **phím tắt riêng** cho từng preset; bấm đúp hoặc nút Capture để chạy. Có sẵn 5 preset mẫu.
 - **Chụp cửa sổ**: chụp đủ cửa sổ dù bị cửa sổ khác che (PrintWindow), tùy chọn bóng đổ quanh cửa sổ và bo góc trong suốt (Windows 11); quay video theo cửa sổ hoặc toàn màn hình.
 
@@ -88,6 +91,12 @@ RXCapture.exe --grab x,y,w,h out.png  # chụp một vùng, không giao diện
 ## Lịch sử phiên bản
 Mỗi lần đóng gói lại file cài đặt, thêm một mục ở đầu danh sách này (số phiên bản lấy từ `build-setup.ps1 -Version`).
 
+### 1.0.2 (chưa đóng gói)
+**Mới**
+- Quay video có tiếng: nút **MIC** và **SPEAKER** trên thanh quay video (bật trước khi quay; khi đang quay bấm để tắt/bật tiếng). Trộn micro + âm thanh máy tính, lưu MP4 (AAC); Settings > Video có hai ô tick mặc định.
+- Editor phát được tiếng của video, tua/dừng khớp hình; cắt video giữ nguyên phần tiếng tương ứng.
+- Mỗi lần đóng gói, bản dựng được lưu vào `releases\<phiên bản>\` và commit lên git.
+
 ### 1.0.1
 **Sửa lỗi**
 - Hộp thoại Watermark (và mọi hộp thoại có thanh trượt): thanh trượt tự cao ~45 px nên đè lên hàng bên dưới, làm ô *Position* bị cắt phần trên. Đã cố định chiều cao thanh trượt.
@@ -111,4 +120,4 @@ Bản cài đặt đầu tiên. Các lỗi đã sửa trước khi phát hành:
 - Danh sách ảnh/video chưa có nút X, chưa chọn nhiều được (kéo chọn, Ctrl, Shift).
 
 ## Chưa có
-Ghi âm (micro/hệ thống) khi quay video, OCR "Grab Text", chia sẻ FTP/đám mây, hiệu ứng phối cảnh, chụp menu nhiều vùng (Multi-area). Chụp menu/tooltip dùng hẹn giờ (Delay) rồi chọn vùng.
+OCR "Grab Text", chia sẻ FTP/đám mây, hiệu ứng phối cảnh, chụp menu nhiều vùng (Multi-area). Chụp menu/tooltip dùng hẹn giờ (Delay) rồi chọn vùng.

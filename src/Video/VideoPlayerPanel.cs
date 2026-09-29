@@ -34,6 +34,7 @@ namespace RXCapture
         readonly Stopwatch clock = new Stopwatch();
 
         Mp4Writer.Reader reader;
+        AudioPlayer audio;                // the sound of the file (null for a silent video); started and stopped together with the clock
         Bitmap cur, next;                 // the frame on screen and the next decoded one, waiting for its time
         TimeSpan curTs, nextTs;
         bool haveNext;
@@ -88,7 +89,7 @@ namespace RXCapture
             lblRange.AutoSize = false; lblRange.TextAlign = ContentAlignment.MiddleLeft; lblRange.ForeColor = Theme.TextDim; lblRange.Font = new Font("Segoe UI", 9f);
 
             seek.Seeked += f => { SeekTo(TimeSpan.FromTicks((long)(duration.Ticks * Math.Max(0, Math.Min(1, f))))); };
-            seek.DragChanged += d => { dragging = d; };
+            seek.DragChanged += d => { dragging = d; if (d) { if (audio != null) audio.Stop(); } else if (playing && audio != null) audio.Start(pos); };
             seek.RangeDragged += OnRangeDragged;
             bar.Controls.AddRange(new Control[] { btnPlay, lblTime, seek, btnStart, btnEnd, lblRange, btnTrim, btnExternal, btnClose });
             bar.Resize += (s, e) => LayoutBar();
@@ -180,6 +181,7 @@ namespace RXCapture
                     return;
                 }
                 reader = new Mp4Writer.Reader(file);
+                audio = AudioPlayer.TryOpen(file);
                 cur = new Bitmap(reader.Width, reader.Height, PixelFormat.Format32bppRgb);
                 next = new Bitmap(reader.Width, reader.Height, PixelFormat.Format32bppRgb);
                 duration = reader.Duration;
@@ -199,14 +201,14 @@ namespace RXCapture
 
         void Fail()
         {
-            Failed = true; playing = false; opened = false; ticker.Stop(); clock.Stop();
+            Failed = true; playing = false; opened = false; ticker.Stop(); clock.Stop(); if (audio != null) audio.Stop();
             view.Visible = false;
             lblError.Text = Loc.T("This video cannot be played here."); lblError.Visible = true; lblError.BringToFront();
         }
 
         void SetPlayGlyph() { btnPlay.Text = playing ? "❚❚" : "▶"; }
 
-        void StartPlaying() { clockBase = pos; clock.Restart(); playing = true; SetPlayGlyph(); }
+        void StartPlaying() { clockBase = pos; clock.Restart(); playing = true; SetPlayGlyph(); if (audio != null) audio.Start(pos); }
 
         public void TogglePlay()
         {
@@ -223,7 +225,7 @@ namespace RXCapture
         {
             if (!playing) return;
             pos = Clamp(clockBase + clock.Elapsed);
-            clock.Stop(); playing = false; SetPlayGlyph();
+            clock.Stop(); playing = false; SetPlayGlyph(); if (audio != null) audio.Stop();
         }
 
         TimeSpan Clamp(TimeSpan t) { return t < TimeSpan.Zero ? TimeSpan.Zero : (t > duration ? duration : t); }
@@ -248,7 +250,7 @@ namespace RXCapture
             }
             catch { Fail(); return; }
             pos = t; clockBase = t;
-            if (playing) clock.Restart();
+            if (playing) { clock.Restart(); if (audio != null && !dragging) audio.Start(t); }
             UpdateProgress(true);
         }
 
@@ -273,7 +275,7 @@ namespace RXCapture
                     {
                         // reached the end: show the first frame again, ready to replay
                         if (!durationKnown) { duration = curTs; durationKnown = true; trimEnd = duration; UpdateRange(); }
-                        playing = false; clock.Stop(); SetPlayGlyph();
+                        playing = false; clock.Stop(); SetPlayGlyph(); if (audio != null) audio.Stop();
                         SeekTo(TimeSpan.Zero);
                         return;
                     }
@@ -299,6 +301,7 @@ namespace RXCapture
         {
             ticker.Stop(); clock.Stop(); playing = false; opened = false; haveNext = false;
             view.SetImage(null); view.Visible = false;
+            if (audio != null) { audio.Dispose(); audio = null; }
             if (reader != null) { reader.Dispose(); reader = null; }
             if (cur != null) { cur.Dispose(); cur = null; }
             if (next != null) { next.Dispose(); next = null; }

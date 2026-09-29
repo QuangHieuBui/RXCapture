@@ -353,6 +353,20 @@ namespace RXCapture
                     case "delay":
                         g.DrawEllipse(pen, 3.5f, 4.5f, 17, 17); g.DrawLine(accPen, 12, 8.5f, 12, 13.5f); g.DrawLine(accPen, 12, 13.5f, 15.5f, 15.5f); g.DrawLine(pen, 10, 2.5f, 14, 2.5f);
                         break;
+                    case "mic":
+                    case "mic_off":
+                        using (var rp = RR(8.5f, 2.5f, 7, 12, 3.5f)) g.DrawPath(pen, rp);
+                        g.DrawArc(accPen, 5, 7, 14, 11, 0, 180);
+                        g.DrawLine(accPen, 12, 18, 12, 21.5f); g.DrawLine(accPen, 8.5f, 21.5f, 15.5f, 21.5f);
+                        if (n == "mic_off") g.DrawLine(P(Color.FromArgb(255, 84, 84), 2.6f), 3.5f, 3.5f, 20.5f, 20.5f);      // muted / off: red slash
+                        break;
+                    case "speaker":
+                    case "speaker_off":
+                        g.DrawPolygon(pen, new[] { new PointF(3.5f, 9.5f), new PointF(8, 9.5f), new PointF(13, 5), new PointF(13, 19), new PointF(8, 14.5f), new PointF(3.5f, 14.5f) });
+                        g.DrawArc(accPen, 11.5f, 8.5f, 6, 7, -65, 130);
+                        g.DrawArc(accPen, 10f, 5.5f, 11, 13, -60, 120);
+                        if (n == "speaker_off") g.DrawLine(P(Color.FromArgb(255, 84, 84), 2.6f), 3.5f, 3.5f, 20.5f, 20.5f);
+                        break;
                     case "pause":
                         g.FillRectangle(inkB, 6, 5, 4.5f, 14); g.FillRectangle(inkB, 13.5f, 5, 4.5f, 14);
                         break;
