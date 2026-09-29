@@ -85,5 +85,30 @@ RXCapture.exe --videotest log.txt     # quay AVI/GIF/MP4 qua giao diện thật,
 RXCapture.exe --grab x,y,w,h out.png  # chụp một vùng, không giao diện
 ```
 
+## Lịch sử phiên bản
+Mỗi lần đóng gói lại file cài đặt, thêm một mục ở đầu danh sách này (số phiên bản lấy từ `build-setup.ps1 -Version`).
+
+### 1.0.1
+**Sửa lỗi**
+- Hộp thoại Watermark (và mọi hộp thoại có thanh trượt): thanh trượt tự cao ~45 px nên đè lên hàng bên dưới, làm ô *Position* bị cắt phần trên. Đã cố định chiều cao thanh trượt.
+- Các ô chọn dạng danh sách trong hộp thoại tối bị Windows vẽ khung xanh nhạt, nền sáng, nút mũi tên trắng: đã vẽ lại theo giao diện tối.
+- Chạy ẩn dưới khay (`--minimized`, do mục chạy cùng Windows) bị lưu vào cài đặt, khiến những lần mở tay sau đó không hiện cửa sổ chính. Giờ chỉ áp dụng cho lần chạy đó, và nếu cả biểu tượng khay lẫn widget đều tắt thì vẫn hiện cửa sổ.
+- Mục chạy cùng Windows trỏ tới đường dẫn cũ sau khi di chuyển hoặc cài lại app: giờ tự trỏ lại nếu file exe cũ không còn. Việc chuyển mục cũ từ tên ShotCraft sang RXCapture trước đây không chạy (đường dẫn registry mất dấu `\`), nay đã chạy.
+- Bấm X trên danh sách ảnh/video từng xóa hẳn file, dễ mất ảnh quan trọng: giờ chỉ **Close** (ẩn khỏi danh sách); *Delete* hỏi trước (mặc định "No") và đưa vào Thùng rác; ảnh đã lưu ra file không bị tự dọn khi thư viện đầy.
+- Mỗi lần Save tạo một file mới: giờ file đã lưu là file chính của mục đó, Save ghi đè lên nó, tiêu đề và danh sách hiện tên file.
+
+**Mới**
+- Chạy cùng Windows: ô tick trong Settings, mục *Start with Windows* ở menu khay, ô tick trong trình cài đặt (cờ `/startup`).
+- Menu khay gọn hơn; thanh công cụ hẹp hơn, icon nét mảnh; thanh quay video chữ in hoa, cỡ lớn hơn.
+- File cài đặt và `RXCapture.exe` được ký số (`tools\sign.ps1`, mặc định chứng chỉ tự cấp; dùng `-Thumbprint` cho chứng chỉ mua). Chứng chỉ tự cấp không hết cảnh báo SmartScreen/diệt virus trên máy chưa tin cậy nó.
+
+### 1.0.0
+Bản cài đặt đầu tiên. Các lỗi đã sửa trước khi phát hành:
+- Video bị méo hình khi chiều rộng không chia hết cho 16 (sai bước dòng khi đọc khung hình).
+- Chụp cuộn trang lỗi khi một phần trang không cuộn cùng nội dung (thanh bên đổi, phần đầu cố định); làm lại cách dùng: chọn vùng → *Scroll* → click vào nội dung, app tự cuộn đến hết trang, *Esc* để dừng.
+- Không phát được video trong Editor và mặc định lưu AVI: nay phát trực tiếp, cắt đoạn bằng thanh xanh, Save/Save As, mặc định MP4 không cần ffmpeg.
+- Thanh quay video chỉ có icon (khó hiểu), bị che khi quay toàn màn hình, hiện trên thanh tác vụ.
+- Danh sách ảnh/video chưa có nút X, chưa chọn nhiều được (kéo chọn, Ctrl, Shift).
+
 ## Chưa có
 Ghi âm (micro/hệ thống) khi quay video, OCR "Grab Text", chia sẻ FTP/đám mây, hiệu ứng phối cảnh, chụp menu nhiều vùng (Multi-area). Chụp menu/tooltip dùng hẹn giờ (Delay) rồi chọn vùng.
