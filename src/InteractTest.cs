@@ -702,6 +702,71 @@ namespace RXCapture
         }
         static readonly System.Reflection.BindingFlags Flg = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance;
 
+        static void PumpFor(int ms) { var t0 = DateTime.Now; while ((DateTime.Now - t0).TotalMilliseconds < ms) { Application.DoEvents(); System.Threading.Thread.Sleep(10); } }
+
+        /// <summary>A video with sound is playing in the editor. Closing the editor window (it only hides itself), the "Close video"
+        /// button and opening another item must all stop the sound and the picture.</summary>
+        static int EditorCloseCheck(System.Text.StringBuilder log)
+        {
+            int failed = 0;
+            string dir = Path.Combine(Path.GetTempPath(), "rxcapture_closetest"); Directory.CreateDirectory(dir);
+            string avi = Path.Combine(dir, "c.avi"), wav = Path.Combine(dir, "c.wav"), mp4 = Path.Combine(dir, "c.mp4");
+            byte[] jpg;
+            using (var b = new Bitmap(320, 180)) { using (var g = Graphics.FromImage(b)) g.Clear(Color.DarkSlateBlue); using (var ms = new MemoryStream()) { b.Save(ms, System.Drawing.Imaging.ImageFormat.Jpeg); jpg = ms.ToArray(); } }
+            using (var w = new AviWriter(avi, 320, 180, 15)) for (int i = 0; i < 90; i++) w.AddFrame(jpg);        // 6 s
+            using (var fs = File.Create(wav))
+            {
+                fs.Write(new byte[AudioRecorder.WavHeader], 0, AudioRecorder.WavHeader);
+                var pcm = new byte[AudioRecorder.Rate * 6 * 4];
+                for (int i = 0; i < AudioRecorder.Rate * 6; i++) { short v = (short)(Math.Sin(2 * Math.PI * 300 * i / AudioRecorder.Rate) * 1500); pcm[i * 4] = pcm[i * 4 + 2] = (byte)(v & 0xff); pcm[i * 4 + 1] = pcm[i * 4 + 3] = (byte)((v >> 8) & 0xff); }
+                fs.Write(pcm, 0, pcm.Length);
+            }
+            if (!Mp4Writer.Convert(avi, mp4, 15, wav)) { log.AppendLine("FAIL editor close: could not build the test video"); return 1; }
+            LibItem item;
+            using (var thumb = new Bitmap(64, 36)) item = LibraryStore.AddVideo(mp4, thumb, 6);
+
+            bool wasRunning = App.Running; App.Running = true;               // like the real app: closing the editor window only hides it
+            var ed = new EditorForm();
+            try
+            {
+                ed.Show(); PumpFor(300);
+                var playerF = typeof(EditorForm).GetField("player", Flg);
+                var panel = (VideoPlayerPanel)playerF.GetValue(ed);
+                Func<bool> soundOn = delegate
+                {
+                    var a = typeof(VideoPlayerPanel).GetField("audio", Flg).GetValue(panel) as AudioPlayer;
+                    return a != null && a.IsPlaying;
+                };
+                Func<bool> playing = () => (bool)typeof(VideoPlayerPanel).GetField("playing", Flg).GetValue(panel);
+                Action<string, bool, string> expect = delegate(string name, bool ok, string info)
+                { log.AppendLine((ok ? "PASS " : "FAIL ") + name + (info.Length > 0 ? "  [" + info + "]" : "")); if (!ok) failed++; };
+
+                ed.ShowVideo(item); PumpFor(1200);
+                expect("editor close: the video with sound is playing", soundOn() && playing(), "sound " + soundOn() + ", playing " + playing());
+
+                ed.Close(); PumpFor(600);                                     // window X: hides the editor
+                expect("editor close: closing the editor window stops the sound and the picture", !ed.Visible && !soundOn() && !playing(), "visible " + ed.Visible + ", sound " + soundOn() + ", playing " + playing());
+
+                ed.Show(); ed.ShowVideo(item); PumpFor(1200);
+                expect("editor close: playing again after showing the editor", soundOn() && playing(), "sound " + soundOn() + ", playing " + playing());
+                typeof(EditorForm).GetMethod("CloseVideo", Flg).Invoke(ed, null); PumpFor(500);
+                expect("editor close: 'Close video' stops the sound and hides the player", !soundOn() && !playing() && !panel.Visible, "sound " + soundOn() + ", playing " + playing() + ", player visible " + panel.Visible);
+
+                ed.ShowVideo(item); PumpFor(1200);
+                ed.WindowState = FormWindowState.Minimized; PumpFor(600);
+                log.AppendLine("  info: minimized editor keeps playing = " + (soundOn() && playing()) + " (the picture is not visible)");
+                ed.WindowState = FormWindowState.Normal;
+            }
+            finally
+            {
+                App.Running = wasRunning;
+                try { ed.Hide(); PumpFor(300); ed.Dispose(); } catch { }
+                try { LibraryStore.Delete(item); } catch { }
+                try { Directory.Delete(dir, true); } catch { }
+            }
+            return failed;
+        }
+
         /// <summary>Records through the real recorder bar with the Speaker button, plays a quiet tone, mutes the speaker part-way and checks
         /// that the saved video has a sound track with the tone first and silence after the mute. GIF is chosen on purpose: sound forces MP4.</summary>
         static int SoundCheck(System.Text.StringBuilder log)
@@ -795,6 +860,8 @@ namespace RXCapture
             var log = new System.Text.StringBuilder();
             int failed = 0;
             App.AppIcon = SystemIcons.Application;
+            var cfg0 = AppSettings.Current; bool micKeep = cfg0.RecordMic, spkKeep = cfg0.RecordSystemSound;
+            cfg0.RecordMic = false; cfg0.RecordSystemSound = false;          // these tests are about the picture: sound would force MP4 (SoundCheck below covers sound)
             foreach (var fmt in new[] { "avi", "gif", "mp4" })
             {
                 AppSettings.Current.VideoFormat = fmt;
@@ -819,6 +886,16 @@ namespace RXCapture
                 log.AppendLine((added ? "PASS " : "FAIL ") + "video recorded as " + fmt + " (library videos " + before + " -> " + vids.Count + ")");
                 if (!added) { failed++; continue; }
                 var v = vids[0];
+                {
+                    // the editor must have opened the new recording (not stayed on whatever was open before)
+                    var ed = App.Editor;
+                    var cur = typeof(EditorForm).GetField("item", Flg).GetValue(ed) as LibItem;
+                    var pl = (VideoPlayerPanel)typeof(EditorForm).GetField("player", Flg).GetValue(ed);
+                    bool focused = cur != null && cur.Id == v.Id && pl.Visible && ed.Visible;
+                    log.AppendLine((focused ? "PASS " : "FAIL ") + fmt + " recording: the editor is open on the new video (item " + (cur == null ? "none" : (cur.Id == v.Id ? "new" : "other")) + ", player visible " + pl.Visible + ", editor visible " + ed.Visible + ")");
+                    if (!focused) failed++;
+                    pl.Stop();          // the editor's own player has the file open now; the checks below use a player of their own
+                }
                 var fi = new FileInfo(v.File);
                 bool okExt = v.Ext == fmt && fi.Length > (fmt == "avi" ? 5000 : 500);   // a still screen makes tiny GIF/MP4 files (identical frames merge)
                 log.AppendLine((okExt ? "PASS " : "FAIL ") + fmt + " file " + fi.Name + " " + fi.Length + " bytes, duration label " + v.DurationSec + "s");
@@ -852,7 +929,11 @@ namespace RXCapture
                 if (fmt != "gif") { failed += PlaybackCheck(v, fmt, log); failed += TrimCheck(v, fmt, log); }
                 LibraryStore.Delete(v);
             }
+            cfg0.RecordMic = micKeep; cfg0.RecordSystemSound = spkKeep;
+            failed += EditorCloseCheck(log);
+            try { App.Editor.Hide(); PumpFor(300); } catch { }          // let pending paints finish before the test process winds down
             failed += SoundCheck(log);
+            try { App.Editor.Hide(); PumpFor(500); } catch { }
             log.AppendLine(failed == 0 ? "ALL VIDEO TESTS PASSED" : failed + " FAILED");
             File.WriteAllText(logPath ?? "video.log", log.ToString());
             return failed == 0 ? 0 : 1;

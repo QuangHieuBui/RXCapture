@@ -96,6 +96,11 @@ Mỗi lần đóng gói lại file cài đặt, thêm một mục ở đầu dan
 - Quay video có tiếng: nút **MIC** và **SPEAKER** trên thanh quay video (bật trước khi quay; khi đang quay bấm để tắt/bật tiếng). Trộn micro + âm thanh máy tính, lưu MP4 (AAC); Settings > Video có hai ô tick mặc định.
 - Editor phát được tiếng của video, tua/dừng khớp hình; cắt video giữ nguyên phần tiếng tương ứng.
 - Mỗi lần đóng gói, bản dựng được lưu vào `releases\<phiên bản>\` và commit lên git.
+- Thanh quay video thu nhỏ (790 × 56), nút bo góc, chấm trạng thái nhấp nháy khi quay, thanh mức âm trên nút Mic/Speaker.
+
+**Sửa lỗi**
+- Quay video xong, Editor mở nhưng không chuyển sang video vừa quay: nay tự mở và phát đúng video mới (danh sách bên dưới cũng chọn video đó).
+- Đóng cửa sổ Editor (chỉ ẩn xuống khay) khi đang phát video thì hình và tiếng vẫn chạy phía sau: nay tự tạm dừng khi cửa sổ bị ẩn.
 
 ### 1.0.1
 **Sửa lỗi**

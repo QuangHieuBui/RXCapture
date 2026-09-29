@@ -140,6 +140,9 @@ namespace RXCapture
 
         // ---- in-editor video playback (replaces the canvas while a video is selected)
 
+        /// <summary>Shows a video that has just been added to the library (a fresh recording): the tray lists it and the player opens on it.</summary>
+        public void ShowNewVideo(LibItem it) { tray.Reload(); ShowVideo(it); }
+
         public void ShowVideo(LibItem it)
         {
             SaveCurrent();
@@ -256,8 +259,16 @@ namespace RXCapture
             status.SetInfo(doc.Width + " x " + doc.Height, canvas.SelectionInfo(), canvas.Zoom);
         }
 
+        /// <summary>The editor window is only hidden when it is closed (it lives on in the tray): a video must not go on playing behind it.</summary>
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            base.OnVisibleChanged(e);
+            if (!Visible) player.Pause();
+        }
+
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            player.Pause();
             canvas.CommitEdit();
             SaveCurrent();
             if (WindowState != FormWindowState.Minimized && AppSettings.Current.EditorMaximized != (WindowState == FormWindowState.Maximized))

@@ -24,7 +24,8 @@ namespace RXCapture
         string path;                       // the file is opened again on the playing thread: Media Foundation readers must stay on the thread that made them
         WAVEFORMATEX fmt;
         Thread thread;
-        volatile bool stop;
+        sealed class Token { public volatile bool Stop; }
+        Token current;                     // one per Start: an old playing thread can never be revived by a later Start
         IntPtr hwo;
 
         AudioPlayer() { }
@@ -48,20 +49,22 @@ namespace RXCapture
         {
             Stop();
             if (path == null) return;
-            stop = false;
-            thread = new Thread(() => Feed(from.Ticks)) { IsBackground = true, Name = "RXCapture audio out" };
+            var tk = new Token(); current = tk;
+            thread = new Thread(() => Feed(from.Ticks, tk)) { IsBackground = true, Name = "RXCapture audio out" };
             thread.Start();
         }
 
         /// <summary>Stops at once (the sound cuts off).</summary>
+        public bool IsPlaying { get { var t = thread; return t != null && t.IsAlive; } }
+
         public void Stop()
         {
-            stop = true;
+            var c = current; if (c != null) c.Stop = true;
             var t = thread; thread = null;
             if (t != null) t.Join(2000);
         }
 
-        void Feed(long from)
+        void Feed(long from, Token tk)
         {
             try
             {
@@ -69,13 +72,13 @@ namespace RXCapture
                 {
                     if (rd == null) return;
                     rd.Seek(TimeSpan.FromTicks(from));
-                    Play(from, rd);
+                    Play(from, rd, tk);
                 }
             }
             catch { }          // a sound problem must never take the application down
         }
 
-        void Play(long from, Mp4Writer.AudioReader reader)
+        void Play(long from, Mp4Writer.AudioReader reader, Token tk)
         {
             IntPtr h;
             if (waveOutOpen(out h, WaveMapper, ref fmt, IntPtr.Zero, IntPtr.Zero, 0) != 0) return;
@@ -94,7 +97,7 @@ namespace RXCapture
                 byte[] pcm = null; int pos = 0; bool ended = false;
                 var fill = new byte[bufSize];
                 int next = 0;
-                while (!stop)
+                while (!tk.Stop)
                 {
                     // wait for the next buffer to be free
                     var hd = (WAVEHDR)Marshal.PtrToStructure(hdrs[next], typeof(WAVEHDR));
@@ -126,7 +129,7 @@ namespace RXCapture
                     next = (next + 1) % Buffers;
                 }
                 // let what was written finish playing (natural end), or cut it at once when stopped
-                while (!stop && !AllDone(hdrs, used)) Thread.Sleep(10);
+                while (!tk.Stop && !AllDone(hdrs, used)) Thread.Sleep(10);
             }
             finally
             {

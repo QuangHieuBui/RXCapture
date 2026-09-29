@@ -26,6 +26,23 @@ namespace RXCapture
             catch (Exception ex) { failed++; log.AppendLine("FAIL " + name + " -> EXCEPTION " + ex.GetType().Name + ": " + ex.Message + "\n" + ex.StackTrace); }
         }
 
+        /// <summary>True when nothing else is playing through the default speakers (0.4 s of loopback is silent) or loopback is not available.
+        /// Tests that need silence use it, so music playing on the computer does not fail them.</summary>
+        internal static bool SpeakersQuiet()
+        {
+            string w = Path.Combine(Path.GetTempPath(), "rxcapture_quiet.wav");
+            var clock = new System.Diagnostics.Stopwatch();
+            using (var rec = new AudioRecorder())
+            {
+                if (!rec.Start(w, false, true, () => clock.ElapsedMilliseconds)) return true;
+                clock.Start(); System.Threading.Thread.Sleep(400); rec.Stop();
+            }
+            var raw = File.ReadAllBytes(w); try { File.Delete(w); } catch { }
+            double sum = 0; long n = 0;
+            for (int p = AudioRecorder.WavHeader; p + 1 < raw.Length; p += 4) { double s = BitConverter.ToInt16(raw, p) / 32768.0; sum += s * s; n++; }
+            return n == 0 || Math.Sqrt(sum / n) < 0.002;
+        }
+
         public static Bitmap Sample(int w, int h)
         {
             var b = new Bitmap(w, h, PixelFormat.Format32bppArgb);
@@ -449,6 +466,8 @@ namespace RXCapture
                 using (var player = AudioPlayer.TryOpen(mp4))
                 {
                     if (player == null) { log.AppendLine("  no sound output - skipped"); return null; }
+                    if (!SpeakersQuiet()) { log.AppendLine("  other sound is playing on this computer - skipped (it would be heard as leaking)"); return null; }
+                    bool alive = false;
                     Func<double, double[]> listen = delegate(double from)          // play from `from` for 0.6 s, stop, listen 0.4 s more
                     {
                         using (var rec = new AudioRecorder())
@@ -458,7 +477,7 @@ namespace RXCapture
                             clock.Start();
                             player.Start(TimeSpan.FromSeconds(from));
                             System.Threading.Thread.Sleep(600);
-                            player.Stop();
+                            player.Stop(); if (player.IsPlaying) alive = true;
                             System.Threading.Thread.Sleep(400);
                             rec.Stop();
                         }
@@ -473,6 +492,7 @@ namespace RXCapture
                         return new[] { rms(0.15, 0.55), rms(0.8, 1.0) };
                     };
                     var fromStart = listen(0.0);
+                    if (alive) return "the player thread is still running after Stop";
                     if (fromStart == null) { log.AppendLine("  no speakers to listen to - skipped"); return null; }
                     var pastTone = listen(1.2);
                     log.AppendLine("  player: from 0 s rms " + fromStart[0].ToString("0.0000") + " / after stop " + fromStart[1].ToString("0.0000") + ";  from 1.2 s rms " + pastTone[0].ToString("0.0000"));

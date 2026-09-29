@@ -373,6 +373,9 @@ namespace RXCapture
                     case "stop":
                         g.FillRectangle(new SolidBrush(Red), 5.5f, 5.5f, 13, 13);
                         break;
+                    case "record_w":
+                        g.FillEllipse(Brushes.White, 5f, 5f, 14, 14);
+                        break;
                     case "record":
                         g.FillEllipse(new SolidBrush(Red), 4.5f, 4.5f, 15, 15);
                         break;
