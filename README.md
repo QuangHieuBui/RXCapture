@@ -91,6 +91,14 @@ RXCapture.exe --grab x,y,w,h out.png  # chụp một vùng, không giao diện
 ## Lịch sử phiên bản
 Mỗi lần đóng gói lại file cài đặt, thêm một mục ở đầu danh sách này (số phiên bản lấy từ `build-setup.ps1 -Version`).
 
+### 1.0.3 (chưa đóng gói)
+**Mới**
+- Video MP4 nhẹ hơn khoảng một nửa: mã hóa H.264 theo chế độ chất lượng thay vì tốc độ bit cố định (màn hình tĩnh gần như không tốn dung lượng, chuyển động mới được cấp thêm). Đo trên 4 giây 1280×720: chữ cuộn + kéo cửa sổ 1575 KB → 718 KB, trang tĩnh 762 KB → 394 KB, độ nét vẫn ~35 dB (PSNR).
+- Tốc độ khung hình mặc định **24 fps** (trước là 15; file đã lưu 15 được chuyển sang 24 một lần). Chọn được 24 trong cửa sổ Capture, 5–30 trong Settings > Video.
+- Settings > Video > **Video quality (MP4)**: Small file / Balanced (mặc định) / High quality.
+- Đổi sang MP4 sau khi quay nhanh gấp ~3 lần: giải mã JPEG song song trên nhiều nhân trong lúc bộ mã hóa xử lý lô trước. Đo trên 10 giây quay Full HD: 3,5 s → 1,2 s (nhanh hơn thời gian thực ~8 lần), kích thước file không đổi.
+- Lưu ý: với cách tính cũ, tăng fps làm file to thêm (24 fps +67%, 30 fps +118%); với chế độ chất lượng mới 30 fps gần như bằng 24 fps.
+
 ### 1.0.2
 **Mới**
 - Quay video có tiếng: nút **MIC** và **SPEAKER** trên thanh quay video (bật trước khi quay; khi đang quay bấm để tắt/bật tiếng). Trộn micro + âm thanh máy tính, lưu MP4 (AAC); Settings > Video có hai ô tick mặc định.

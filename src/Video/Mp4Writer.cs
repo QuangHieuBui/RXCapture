@@ -32,6 +32,25 @@ namespace RXCapture
         static readonly Guid AacPayload = new Guid("bfbabe79-7434-4d1c-94f0-72a3b9e17188");
         static readonly Guid AacProfileLevel = new Guid("7632f0e6-9538-4d61-acda-ea29c8c14456");
 
+        static readonly Guid CodecRateControlMode = new Guid("1c0608e9-370c-4710-8a58-cb6181c42423");
+        static readonly Guid CodecQuality = new Guid("fcbf57a3-7ea5-4b0c-9644-69b40c39c391");
+
+        /// <summary>How the H.264 video is encoded. Public so tests can compare settings.</summary>
+        public static class Encoder
+        {
+            /// <summary>Bits per pixel per second at 15 fps for constant-rate encoding (Quality = 0).</summary>
+            public static double BitsPerPixel = 1.5;
+            /// <summary>1..100: quality-based variable bit rate (a still screen costs little, motion gets the bits); 0 = constant bit rate (BitsPerPixel).
+            /// 45 = small file, 55 = balanced, 60 = high quality. Values above ~65 grow very fast.</summary>
+            public static int Quality = 55;
+
+            public static int Bitrate(int w, int h, int fps)
+            {
+                double b = (double)w * h * BitsPerPixel * Math.Sqrt(fps / 15.0);      // faster frame rates need fewer extra bits: frames are alike
+                return (int)Math.Min(20000000.0, Math.Max(400000.0, b));
+            }
+        }
+
         /// <summary>Re-encodes the MJPEG frames of an AVI written by AviWriter as H.264 MP4. With <paramref name="wav"/> (an
         /// <see cref="AudioRecorder"/> file) the sound is added as an AAC track.</summary>
         public static bool Convert(string avi, string mp4, int fps, string wav = null)
@@ -45,29 +64,45 @@ namespace RXCapture
                 started = true;
                 IMFSinkWriter writer = null;
                 AudioFeed feed = null;
-                int frameNo = 0, w = 0, h = 0, stride = 0;
+                int frameNo = 0, w = 0, h = 0;
                 long duration = 10000000L / fps;
-                byte[] row = null;
                 if (wav != null && File.Exists(wav)) wavSource = new WavSource(wav);
-                foreach (var jpg in AviReader.Frames(avi))
+                // JPEG decoding is the slow part (about 70% of the time): several frames are decoded at once on the other cores while the
+                // encoder works on the previous batch, so the two overlap instead of following each other
+                var jpgs = AviReader.Frames(avi).GetEnumerator();
+                int batchSize = 4;
+                Func<System.Collections.Generic.List<byte[]>> readBatch = delegate
                 {
-                    using (var ms = new MemoryStream(jpg))
-                    using (var img = Image.FromStream(ms))
-                    using (var bmp = new Bitmap(img.Width & ~1, img.Height & ~1, PixelFormat.Format32bppRgb))
+                    var l = new System.Collections.Generic.List<byte[]>();
+                    while (l.Count < batchSize && jpgs.MoveNext()) l.Add(jpgs.Current);
+                    return l;
+                };
+                System.Threading.Tasks.Task<Raw[]> pending = null;
+                var firstBatch = readBatch();
+                if (firstBatch.Count > 0)
+                {
+                    var probe = DecodeFrame(firstBatch[0]);                                   // its size decides the batch size and opens the writer
+                    w = probe.W; h = probe.H;
+                    batchSize = (int)Math.Max(2, Math.Min(8, 96L * 1024 * 1024 / ((long)w * h * 4)));       // at most ~100 MB of raw frames in flight
+                    int audioStream;
+                    writer = Open(mp4, w, h, fps, wavSource != null ? AudioRecorder.Rate : 0, AudioRecorder.Channels, out audioStream);
+                    if (wavSource != null) feed = new AudioFeed(wavSource, writer, audioStream, AudioRecorder.Rate, AudioRecorder.Channels * 2);
+                    var rest = firstBatch.GetRange(1, firstBatch.Count - 1);
+                    pending = StartDecode(rest);
+                    if (feed != null) feed.Pump(0);
+                    WriteRaw(writer, probe, 0, duration); frameNo = 1;
+                    while (pending != null)
                     {
-                        using (var g = Graphics.FromImage(bmp)) g.DrawImage(img, 0, 0, bmp.Width, bmp.Height);
-                        if (writer == null)
+                        var frames = pending.Result;
+                        var more = readBatch();
+                        pending = more.Count > 0 ? StartDecode(more) : null;                  // decode the next batch while this one is encoded
+                        foreach (var raw in frames)
                         {
-                            w = bmp.Width; h = bmp.Height; stride = w * 4; row = new byte[stride];
-                            int audioStream;
-                            writer = Open(mp4, w, h, fps, wavSource != null ? AudioRecorder.Rate : 0, AudioRecorder.Channels, out audioStream);
-                            if (wavSource != null) feed = new AudioFeed(wavSource, writer, audioStream, AudioRecorder.Rate, AudioRecorder.Channels * 2);
+                            if (raw == null || raw.W != w || raw.H != h) continue;             // recordings have a fixed size; ignore strays
+                            if (feed != null) feed.Pump(frameNo * duration);                   // keep the sound level with the pictures
+                            WriteRaw(writer, raw, frameNo * duration, duration);
+                            frameNo++;
                         }
-                        else if (bmp.Width != w || bmp.Height != h) continue;   // recordings have a fixed size; ignore strays
-
-                        if (feed != null) feed.Pump(frameNo * duration);          // keep the sound level with the pictures
-                        WriteFrame(writer, bmp, row, frameNo * duration, duration);
-                        frameNo++;
                     }
                 }
                 if (writer != null)
@@ -86,6 +121,58 @@ namespace RXCapture
                 if (!ok) try { File.Delete(mp4); } catch { }
             }
             return ok && File.Exists(mp4);
+        }
+
+        /// <summary>One decoded recording frame in the layout the encoder wants (RGB32, bottom row first).</summary>
+        sealed class Raw { public int W, H; public byte[] Data; }
+
+        /// <summary>Decodes one MJPEG frame (thread-safe: called on several threads at once). Odd sizes lose their last row / column.</summary>
+        static Raw DecodeFrame(byte[] jpg)
+        {
+            try
+            {
+                using (var ms = new MemoryStream(jpg))
+                using (var img = new Bitmap(ms))
+                {
+                    int w = img.Width & ~1, h = img.Height & ~1, stride = w * 4;
+                    var raw = new Raw { W = w, H = h, Data = new byte[stride * h] };
+                    var data = img.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppRgb);
+                    try
+                    {
+                        for (int y = 0; y < h; y++)
+                            Marshal.Copy(IntPtr.Add(data.Scan0, y * data.Stride), raw.Data, (h - 1 - y) * stride, stride);
+                    }
+                    finally { img.UnlockBits(data); }
+                    return raw;
+                }
+            }
+            catch { return null; }
+        }
+
+        static System.Threading.Tasks.Task<Raw[]> StartDecode(System.Collections.Generic.List<byte[]> jpgs)
+        {
+            return System.Threading.Tasks.Task.Factory.StartNew(delegate
+            {
+                var res = new Raw[jpgs.Count];
+                System.Threading.Tasks.Parallel.For(0, jpgs.Count, i => res[i] = DecodeFrame(jpgs[i]));
+                return res;
+            });
+        }
+
+        /// <summary>Hands one already flipped frame to the sink writer.</summary>
+        static void WriteRaw(IMFSinkWriter writer, Raw raw, long time, long duration)
+        {
+            IMFMediaBuffer buf; Check(MFCreateMemoryBuffer(raw.Data.Length, out buf));
+            IntPtr dst; int max, cur; Check(buf.Lock(out dst, out max, out cur));
+            Marshal.Copy(raw.Data, 0, dst, raw.Data.Length);
+            Check(buf.Unlock());
+            Check(buf.SetCurrentLength(raw.Data.Length));
+            IMFSample sample; Check(MFCreateSample(out sample));
+            Check(sample.AddBuffer(buf));
+            Check(sample.SetSampleTime(time));
+            Check(sample.SetSampleDuration(duration));
+            Check(writer.WriteSample(0, sample));
+            Marshal.ReleaseComObject(sample); Marshal.ReleaseComObject(buf);
         }
 
         // ------------------------------------------------------------------ audio track
@@ -489,7 +576,7 @@ namespace RXCapture
             audioStream = -1;
             IMFSinkWriter writer;
             Check(MFCreateSinkWriterFromURL(mp4, IntPtr.Zero, IntPtr.Zero, out writer));
-            int bitrate = (int)Math.Min(40000000L, Math.Max(1000000L, (long)w * h * fps / 4));   // ~0.25 bit per pixel: screen text stays crisp
+            int bitrate = Encoder.Bitrate(w, h, fps);
 
             IMFMediaType output; Check(MFCreateMediaType(out output));
             Check(output.SetGUID(MajorType, MediaVideo));
@@ -508,7 +595,18 @@ namespace RXCapture
             Check(input.SetUINT64(FrameSize, ((ulong)w << 32) | (uint)h));
             Check(input.SetUINT64(FrameRate, ((ulong)fps << 32) | 1u));
             Check(input.SetUINT64(PixelAspect, (1UL << 32) | 1u));
-            Check(writer.SetInputMediaType(stream, input, null));
+            IMFAttributes enc = null;
+            if (Encoder.Quality > 0)
+            {
+                // quality-based variable bit rate: a still screen costs almost nothing, motion gets the bits (instead of a constant rate)
+                Check(MFCreateAttributes(out enc, 2));
+                Check(enc.SetUINT32(CodecRateControlMode, 3));
+                Check(enc.SetUINT32(CodecQuality, Encoder.Quality));
+            }
+            int hrIn = writer.SetInputMediaType(stream, input, enc);
+            if (hrIn < 0 && enc != null) hrIn = writer.SetInputMediaType(stream, input, null);                 // this encoder does not know quality mode: constant rate
+            Check(hrIn);
+            if (enc != null) Marshal.ReleaseComObject(enc);
             Marshal.ReleaseComObject(output); Marshal.ReleaseComObject(input);
 
             if (audioRate > 0)

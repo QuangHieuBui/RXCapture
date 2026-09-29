@@ -42,7 +42,8 @@ namespace RXCapture
         public string HkRepeat = "Ctrl+Shift+L";
         public string HkVideo = "Ctrl+Shift+V";
 
-        public int VideoFps = 15;
+        public int VideoFps = 24;                   // 24 fps looks smooth and, with quality-based encoding, costs about the same as 15 fps
+        public int VideoQuality = 1;                // 0 small file, 1 balanced, 2 high quality (see Mp4Writer.Encoder.Quality)
         public bool VideoCursor = true;
         public bool RecordMic = false;               // sound for video recordings: microphone and/or what the computer plays (speakers); needs MP4
         public bool RecordSystemSound = false;
@@ -93,7 +94,7 @@ namespace RXCapture
 
         public static AppSettings Current
         {
-            get { if (_cur == null) { _cur = Load(); _cur.EnsurePresets(); _cur.MigrateFileName(); _cur.MigrateVideoFormat(); } return _cur; }
+            get { if (_cur == null) { _cur = Load(); _cur.EnsurePresets(); _cur.MigrateFileName(); _cur.MigrateVideoFormat(); _cur.MigrateVideoFps(); } return _cur; }
         }
 
         static AppSettings Load()
@@ -126,6 +127,20 @@ namespace RXCapture
 
         /// <summary>MP4 is the default video format now. Files saved by older builds hold "avi" (the former default), so switch it once.</summary>
         void MigrateVideoFormat() { if (ApplyVideoFormatMigration()) Save(); }
+
+        void MigrateVideoFps() { if (ApplyVideoFpsMigration()) Save(); }
+
+        /// <summary>The frame rate default went from 15 to 24 fps: files saved with the old default (15) move to the new one, once. Later choices stay.</summary>
+        internal bool ApplyVideoFpsMigration()
+        {
+            if (SettingsVersion >= 3) return false;
+            if (VideoFps == 15) VideoFps = 24;
+            SettingsVersion = 3;
+            return true;
+        }
+
+        /// <summary>The H.264 quality (Mp4Writer.Encoder.Quality) for a setting: small file 45, balanced 55, high 60.</summary>
+        public static int QualityFor(int level) { return level <= 0 ? 45 : (level == 1 ? 55 : 60); }
 
         /// <summary>The in-memory part of the migration (no file access, so it can be tested). True when something changed.</summary>
         internal bool ApplyVideoFormatMigration()

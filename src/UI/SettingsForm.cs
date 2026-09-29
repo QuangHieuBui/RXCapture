@@ -30,7 +30,7 @@ namespace RXCapture
         int rowY;
         Panel cur;
 
-        ComboBox cbLang, cbFormat, cbEffect, cbVFormat;
+        ComboBox cbLang, cbFormat, cbEffect, cbVFormat, cbVQuality;
         CheckBox chRecMic, chRecSys, chStartup, chTray, chMinTray, chWidget, chEditorMax, chCursor, chMag, chImmediate, chAllMon, chSound, chWShadow, chWCorners, chWFull, chEditor, chClip, chAuto, chVCursor;
         NumericUpDown nLib, nDelay, nFixW, nFixH, nJpeg, nFps, nGif;
         TextBox tbFolder, tbPattern;
@@ -86,6 +86,7 @@ namespace RXCapture
 
             Page("Video");
             nFps = Num("Frames per second", 5, 30, cfg.VideoFps);
+            cbVQuality = Combo("Video quality (MP4)", new[] { "Small file", "Balanced", "High quality" }, Math.Max(0, Math.Min(2, cfg.VideoQuality)));
             chVCursor = Check("Record the mouse cursor", cfg.VideoCursor);
             chRecMic = Check("Record the microphone", cfg.RecordMic);
             chRecSys = Check("Record the computer sound (speakers)", cfg.RecordSystemSound);
@@ -197,7 +198,7 @@ namespace RXCapture
             cfg.JpegQuality = (int)nJpeg.Value; cfg.FileNamePattern = tbPattern.Text; cfg.Effect = (AfterEffect)cbEffect.SelectedIndex;
             cfg.HkAllInOne = hk["HkAllInOne"].Text; cfg.HkRegion = hk["HkRegion"].Text; cfg.HkWindow = hk["HkWindow"].Text; cfg.HkFullScreen = hk["HkFullScreen"].Text;
             cfg.HkScroll = hk["HkScroll"].Text; cfg.HkFreehand = hk["HkFreehand"].Text; cfg.HkRepeat = hk["HkRepeat"].Text; cfg.HkVideo = hk["HkVideo"].Text;
-            cfg.VideoFps = (int)nFps.Value; cfg.VideoCursor = chVCursor.Checked; cfg.RecordMic = chRecMic.Checked; cfg.RecordSystemSound = chRecSys.Checked; cfg.VideoFormat = new[] { "avi", "gif", "mp4" }[cbVFormat.SelectedIndex]; cfg.GifMaxWidth = (int)nGif.Value;
+            cfg.VideoFps = (int)nFps.Value; cfg.VideoQuality = cbVQuality.SelectedIndex; cfg.VideoCursor = chVCursor.Checked; cfg.RecordMic = chRecMic.Checked; cfg.RecordSystemSound = chRecSys.Checked; cfg.VideoFormat = new[] { "avi", "gif", "mp4" }[cbVFormat.SelectedIndex]; cfg.GifMaxWidth = (int)nGif.Value;
             cfg.Save();
         }
     }

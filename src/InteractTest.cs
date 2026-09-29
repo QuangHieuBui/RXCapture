@@ -742,7 +742,7 @@ namespace RXCapture
                 { log.AppendLine((ok ? "PASS " : "FAIL ") + name + (info.Length > 0 ? "  [" + info + "]" : "")); if (!ok) failed++; };
 
                 ed.ShowVideo(item); PumpFor(1200);
-                expect("editor close: the video with sound is playing", soundOn() && playing(), "sound " + soundOn() + ", playing " + playing());
+                expect("editor close: the video with sound is playing", soundOn() && playing(), "sound " + soundOn() + ", playing " + playing() + ", failed " + panel.Failed + ", opened " + panel.IsOpened + ", duration " + panel.Duration + ", pos " + panel.Position);
 
                 ed.Close(); PumpFor(600);                                     // window X: hides the editor
                 expect("editor close: closing the editor window stops the sound and the picture", !ed.Visible && !soundOn() && !playing(), "visible " + ed.Visible + ", sound " + soundOn() + ", playing " + playing());

@@ -503,6 +503,98 @@ namespace RXCapture
                 return null;
             });
 
+            Check("video size: the new default (24 fps, quality mode) is far smaller than the old one and still sharp", delegate
+            {
+                const int W = 1280, H = 720;
+                Func<int, bool, string> makeAvi = delegate(int fps, bool moving)
+                {
+                    string avi = Path.Combine(tmp, "size_" + fps + (moving ? "m" : "s") + ".avi");
+                    var codec = VideoRecorder.FindJpeg();
+                    using (var w = new AviWriter(avi, W, H, fps))
+                    using (var bmp = new Bitmap(W, H, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+                    using (var g = Graphics.FromImage(bmp))
+                    using (var ep = new System.Drawing.Imaging.EncoderParameters(1))
+                    using (var fnt = new Font("Consolas", 11f))
+                    {
+                        ep.Param[0] = new System.Drawing.Imaging.EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 82L);
+                        var rnd = new Random(7);
+                        var lines = new string[80]; for (int i = 0; i < lines.Length; i++) lines[i] = "line " + i + "  the quick brown fox jumps over the lazy dog " + rnd.Next(100000, 999999);
+                        for (int f = 0; f < fps * 4; f++)
+                        {
+                            g.Clear(Color.White);
+                            double t = f / (double)fps;
+                            float scroll = moving ? (float)(t * 60) : 0;                         // 60 px/s scrolling text
+                            for (int i = 0; i < lines.Length; i++) g.DrawString(lines[i], fnt, Brushes.Black, 12, 10 + i * 18 - scroll);
+                            using (var b = new System.Drawing.Drawing2D.LinearGradientBrush(new Rectangle(0, 0, 400, 240), Color.SteelBlue, Color.Orange, 45f))
+                                g.FillRectangle(b, moving ? (int)(300 + 400 * Math.Abs(Math.Sin(t))) : 500, 200, 400, 240);           // a window being dragged around
+                            using (var ms = new MemoryStream()) { bmp.Save(ms, codec, ep); w.AddFrame(ms.ToArray()); }
+                        }
+                    }
+                    return avi;
+                };
+                Func<string, int, double, int, int, int, string> encode = delegate(string avi, int fps, double bpp, int quality, int profile, int gop)
+                {
+                    Mp4Writer.Encoder.BitsPerPixel = bpp; Mp4Writer.Encoder.Quality = quality;
+                    string mp4 = Path.ChangeExtension(avi, ".mp4"); if (File.Exists(mp4)) File.Delete(mp4);
+                    if (!Mp4Writer.Convert(avi, mp4, fps)) return null;
+                    return mp4;
+                };
+                Func<string, string, double> psnr = delegate(string aviPath, string mp4)          // middle frame of the video against the source frame
+                {
+                    int idx = -1, n = 0; byte[] src = null;
+                    foreach (var jpg in AviReader.Frames(aviPath)) n++;
+                    int want = n / 2;
+                    foreach (var jpg in AviReader.Frames(aviPath)) { if (++idx == want) { src = jpg; break; } }
+                    using (var ms = new MemoryStream(src))
+                    using (var a = new Bitmap(ms))
+                    using (var rd = new Mp4Writer.Reader(mp4))
+                    using (var b = new Bitmap(rd.Width, rd.Height, System.Drawing.Imaging.PixelFormat.Format32bppRgb))
+                    {
+                        rd.Seek(TimeSpan.FromSeconds(want / (double)rd.Fps)); TimeSpan ts;
+                        while (rd.ReadFrame(b, out ts)) if (ts.TotalSeconds >= want / (double)rd.Fps - 0.01) break;
+                        double se = 0; long cnt = 0;
+                        for (int y = 0; y < H; y += 2) for (int x = 0; x < W; x += 2)
+                        { var p = a.GetPixel(x, y); var q = b.GetPixel(x, y); double d = ((p.R - q.R) * (p.R - q.R) + (p.G - q.G) * (p.G - q.G) + (p.B - q.B) * (p.B - q.B)) / 3.0; se += d; cnt++; }
+                        double mse = se / cnt; return mse < 1e-9 ? 99 : 10 * Math.Log10(255.0 * 255.0 / mse);
+                    }
+                };
+                double keepBpp = Mp4Writer.Encoder.BitsPerPixel; int keepQ = Mp4Writer.Encoder.Quality;
+                var sizeKb = new System.Collections.Generic.Dictionary<string, long>(); var dB = new System.Collections.Generic.Dictionary<string, double>();
+                try
+                {
+                    var rows = new[]
+                    {
+                        new { Name = "old default: 15 fps, constant rate 3.75", Fps = 15, Bpp = 3.75, Q = 0, P = 0, G = 0 },
+                        new { Name = "new default: 24 fps, quality 55",          Fps = 24, Bpp = 1.5, Q = 55, P = 0, G = 0 },
+                        new { Name = "small file:  24 fps, quality 45",          Fps = 24, Bpp = 1.5, Q = 45, P = 0, G = 0 },
+                        new { Name = "high:        24 fps, quality 60",          Fps = 24, Bpp = 1.5, Q = 60, P = 0, G = 0 },
+                        new { Name = "smooth:      30 fps, quality 55",          Fps = 30, Bpp = 1.5, Q = 55, P = 0, G = 0 },
+                    };
+                    foreach (var moving in new[] { true, false })
+                    {
+                        log.AppendLine("  content: " + (moving ? "scrolling text + dragged window" : "still page") + ", 4 s, " + W + "x" + H);
+                        foreach (var r in rows)
+                        {
+                            string avi = makeAvi(r.Fps, moving);
+                            string mp4 = encode(avi, r.Fps, r.Bpp, r.Q, r.P, r.G);
+                            if (mp4 == null) { log.AppendLine("    " + r.Name + ": ENCODE FAILED"); continue; }
+                            long kb = new FileInfo(mp4).Length / 1024; double db = psnr(avi, mp4); string key = (moving ? "moving " : "still ") + r.Name.Substring(0, 3); sizeKb[key] = kb; dB[key] = db;
+                            log.AppendLine("    " + r.Name.PadRight(44) + kb.ToString().PadLeft(6) + " KB   PSNR " + db.ToString("0.0") + " dB");
+                        }
+                    }
+                }
+                finally { Mp4Writer.Encoder.BitsPerPixel = keepBpp; Mp4Writer.Encoder.Quality = keepQ; }
+                foreach (var kind in new[] { "moving ", "still " })
+                {
+                    if (!sizeKb.ContainsKey(kind + "old") || !sizeKb.ContainsKey(kind + "new")) return kind.Trim() + ": an encode failed";
+                    if (sizeKb[kind + "new"] > sizeKb[kind + "old"] * 0.65) return kind.Trim() + ": new default " + sizeKb[kind + "new"] + " KB is not at least 35% smaller than the old " + sizeKb[kind + "old"] + " KB";
+                    if (dB[kind + "new"] < 32) return kind.Trim() + ": new default looks too soft (PSNR " + dB[kind + "new"].ToString("0.0") + " dB)";
+                    if (sizeKb[kind + "sma"] > sizeKb[kind + "new"] || sizeKb[kind + "hig"] < sizeKb[kind + "new"]) return kind.Trim() + ": small / balanced / high quality are not in size order";
+                }
+                if (Math.Abs(sizeKb["moving smo"] - sizeKb["moving new"]) > sizeKb["moving new"] * 0.4) return "30 fps costs much more than 24 fps in quality mode";
+                return null;
+            });
+
             Check("AVI writer/reader + GIF encoder", delegate
             {
                 string avi = Path.Combine(tmp, "t.avi"), gif = Path.Combine(tmp, "t.gif");
@@ -665,6 +757,54 @@ namespace RXCapture
                 gif.ApplyVideoFormatMigration();
                 if (gif.VideoFormat != "gif") return "a gif choice was changed";
                 if (new AppSettings().VideoFormat != "mp4") return "the default is not mp4";
+                return null;
+            });
+
+            Check("convert speed: a 10 s full HD recording converts to MP4 faster than real time", delegate
+            {
+                const int W = 1920, H = 1080, Fps = 24;
+                string avi = Path.Combine(tmp, "speed.avi"), mp4 = Path.Combine(tmp, "speed.mp4");
+                var codec = VideoRecorder.FindJpeg();
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                using (var w = new AviWriter(avi, W, H, Fps))
+                using (var bmp = new Bitmap(W, H, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+                using (var g = Graphics.FromImage(bmp))
+                using (var ep = new System.Drawing.Imaging.EncoderParameters(1))
+                using (var fnt = new Font("Consolas", 12f))
+                {
+                    ep.Param[0] = new System.Drawing.Imaging.EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 82L);
+                    for (int f = 0; f < Fps * 10; f++)
+                    {
+                        g.Clear(Color.White);
+                        for (int i = 0; i < 90; i++) g.DrawString("line " + i + "  the quick brown fox jumps over the lazy dog 0123456789", fnt, Brushes.Black, 12, 10 + i * 20 - f * 2);
+                        using (var b = new System.Drawing.Drawing2D.LinearGradientBrush(new Rectangle(0, 0, 600, 400), Color.SteelBlue, Color.Orange, 45f)) g.FillRectangle(b, 400 + (f * 7) % 900, 300, 600, 400);
+                        using (var ms = new MemoryStream()) { bmp.Save(ms, codec, ep); w.AddFrame(ms.ToArray()); }
+                    }
+                }
+                log.AppendLine("  made the test AVI in " + sw.Elapsed.TotalSeconds.ToString("0.0") + " s, " + new FileInfo(avi).Length / 1024 / 1024 + " MB");
+                // decode only
+                sw.Restart(); int n = 0;
+                foreach (var jpg in AviReader.Frames(avi))
+                    using (var ms = new MemoryStream(jpg)) using (var img = Image.FromStream(ms)) using (var bmp = new Bitmap(img.Width & ~1, img.Height & ~1, System.Drawing.Imaging.PixelFormat.Format32bppRgb)) { using (var g = Graphics.FromImage(bmp)) g.DrawImage(img, 0, 0, bmp.Width, bmp.Height); n++; }
+                log.AppendLine("  JPEG decode + draw only: " + sw.Elapsed.TotalSeconds.ToString("0.0") + " s for " + n + " frames");
+                sw.Restart();
+                bool ok = Mp4Writer.Convert(avi, mp4, Fps);
+                log.AppendLine("  full convert: " + sw.Elapsed.TotalSeconds.ToString("0.0") + " s -> " + (ok ? new FileInfo(mp4).Length / 1024 + " KB" : "FAILED"));
+                if (!ok) return "convert failed";
+                return sw.Elapsed.TotalSeconds > 10 ? "converting 10 s of full HD took " + sw.Elapsed.TotalSeconds.ToString("0.0") + " s - slower than real time" : null;
+            });
+
+            Check("frame rate default: 24 fps for new settings, old 15 fps default moves once, a later choice stays", delegate
+            {
+                if (new AppSettings().VideoFps != 24) return "the default is not 24 fps";
+                var old = new AppSettings { VideoFps = 15, SettingsVersion = 2 };
+                if (!old.ApplyVideoFpsMigration() || old.VideoFps != 24 || old.SettingsVersion != 3) return "15 fps from an old file was not moved to 24";
+                old.VideoFps = 15;                                           // the user picks 15 on purpose afterwards
+                if (old.ApplyVideoFpsMigration() || old.VideoFps != 15) return "a later 15 fps choice was overwritten";
+                var custom = new AppSettings { VideoFps = 20, SettingsVersion = 2 };
+                custom.ApplyVideoFpsMigration();
+                if (custom.VideoFps != 20) return "a custom frame rate was changed";
+                if (AppSettings.QualityFor(0) >= AppSettings.QualityFor(1) || AppSettings.QualityFor(1) >= AppSettings.QualityFor(2)) return "quality levels are not in order";
                 return null;
             });
 

@@ -50,6 +50,7 @@ namespace RXCapture
             string path = r.AviPath;
             try
             {
+                Mp4Writer.Encoder.Quality = AppSettings.QualityFor(cfg.VideoQuality);       // how small the MP4 gets
                 string fmt = cfg.VideoFormat;
                 if (r.WavPath != null) fmt = "mp4";                    // only MP4 carries sound
                 if (fmt == "gif")

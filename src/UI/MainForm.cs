@@ -126,10 +126,10 @@ namespace RXCapture
             cbVSel = AddCombo(pVideo, 4, new[] { "Region", "Window", "Full Screen" });
             cbVSel.SelectedIndexChanged += (s, e) => UpdateHotkeyText();
             AddLabel(pVideo, "Format", 42);
-            cbFormat = AddCombo(pVideo, 38, new[] { "AVI (Motion-JPEG)", "GIF (animated)", "MP4 (needs ffmpeg.exe)" });
+            cbFormat = AddCombo(pVideo, 38, new[] { "AVI (Motion-JPEG)", "GIF (animated)", "MP4 (H.264)" });
             cbFormat.SelectedIndexChanged += (s, e) => { if (loading) return; cfg.VideoFormat = new[] { "avi", "gif", "mp4" }[cbFormat.SelectedIndex]; cfg.Save(); };
             AddLabel(pVideo, "Frames per second", 76);
-            cbFps = AddCombo(pVideo, 72, new[] { "10", "15", "20", "25", "30" });
+            cbFps = AddCombo(pVideo, 72, new[] { "10", "15", "20", "24", "25", "30" });
             cbFps.SelectedIndexChanged += (s, e) => { if (loading) return; cfg.VideoFps = int.Parse((string)cbFps.SelectedItem); cfg.Save(); };
             chVCursor = AddCheck(pVideo, "Record the mouse cursor", 106, v => cfg.VideoCursor = v);
 
@@ -225,7 +225,7 @@ namespace RXCapture
                 int di = Array.IndexOf(Delays, cfg.DelaySeconds); cbDelay.SelectedIndex = di < 0 ? 0 : di;
                 cbShare.SelectedIndex = ShareIndex();
                 cbFormat.SelectedIndex = cfg.VideoFormat == "gif" ? 1 : (cfg.VideoFormat == "mp4" ? 2 : 0);
-                cbFps.SelectedItem = cfg.VideoFps.ToString(); if (cbFps.SelectedIndex < 0) cbFps.SelectedIndex = 1;
+                cbFps.SelectedItem = cfg.VideoFps.ToString(); if (cbFps.SelectedIndex < 0) cbFps.SelectedIndex = cbFps.Items.IndexOf("24");
                 RefreshPresetList();
                 UpdateImageOptions();
             }
