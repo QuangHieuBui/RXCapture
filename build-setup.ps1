@@ -1,12 +1,12 @@
 # Builds the installer: dist\RXCapture-Setup-<version>.exe, and keeps a copy of every version in releases\<version>\ (committed to git)
-#   powershell -ExecutionPolicy Bypass -File build-setup.ps1 [-Version 1.0.1] [-OutDir <folder>] [-NoRelease] [-Force]
+#   powershell -ExecutionPolicy Bypass -File build-setup.ps1 [-Version 1.0.2] [-OutDir <folder>] [-NoRelease] [-Force]
 # The application is compiled first (build.ps1), zipped, and embedded in a small self-contained installer
 # (setup\Setup.cs). Needs nothing but the C# compiler that ships with Windows.
 #   Both RXCapture.exe and the installer are code-signed (tools\sign.ps1: self-signed certificate, or -Thumbprint <sha1> of a
 #   certificate you bought). -NoSign skips it.
 #   releases\<version>\ holds the installer, a portable zip, the SHA-256, the public certificate and BUILD.txt. An existing version folder is
 #   never overwritten (bump -Version) unless -Force. -OutDir builds (tests) and -NoRelease do not touch releases\.
-param([string]$Version = '1.0.1', [string]$OutDir, [string]$Thumbprint, [switch]$NoSign, [switch]$NoRelease, [switch]$Force)
+param([string]$Version = '1.0.2', [string]$OutDir, [string]$Thumbprint, [switch]$NoSign, [switch]$NoRelease, [switch]$Force)
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $dist = if ($OutDir) { $OutDir } else { Join-Path $root 'dist' }
