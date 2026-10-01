@@ -240,7 +240,7 @@ namespace RXCapture
         string lastTip;
         static readonly Font TabFont = new Font("Segoe UI", 9.5f);
         static readonly Font GroupFont = new Font("Segoe UI", 8.5f);
-        public const float UiZoom = 1.2f;                // the whole toolbar is drawn 20% larger than the DPI scale alone
+        public const float UiZoom = 1.0f;                // the toolbar is drawn at the plain DPI scale (it was 20% larger)
 
         public Ribbon()
         {

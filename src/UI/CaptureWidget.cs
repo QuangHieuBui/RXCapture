@@ -41,7 +41,9 @@ namespace RXCapture
         Hit hover = Hit.None, downHit = Hit.None;
         int hoverItem = -1, downItem = -1;
         string tipText = "";
-        DateTime outsideSince = DateTime.MinValue;
+        DateTime outsideSince = DateTime.MinValue, insideSince = DateTime.MinValue;
+        const int ExpandDwellMs = 280;                 // the pointer must rest on the folded tab this long before it unfolds
+        int TabH { get { return Math.Max(4, S(5)); } }   // height of the folded tab (it used to be 8 px: browser tab strips are at the same screen edge)
         Rectangle rEditor, rCapture, rGear, rBar, rList, rPrev, rNext, rManage, rTitle;
         int ySep1, ySep2, yDots;
 
@@ -192,7 +194,7 @@ namespace RXCapture
                 h = y;
             }
             expW = w; expH = h;
-            int targetH = collapsed ? S(8) : h;
+            int targetH = collapsed ? TabH : h;
             if (!animate || Width <= 0)
             {
                 anim.Stop();
@@ -221,7 +223,7 @@ namespace RXCapture
             }
             double e = 1 - Math.Pow(1 - t, 3);          // ease-out
             int h = animFrom + (int)Math.Round((animTo - animFrom) * e);
-            Place(expW, Math.Max(S(8), h));
+            Place(expW, Math.Max(TabH, h));
             Invalidate();
         }
 
@@ -263,13 +265,21 @@ namespace RXCapture
             bool rec = VideoRecorder.IsActive;
             if (rec != lastRec) { lastRec = rec; Invalidate(); }
             var pt = Cursor.Position;
-            var b = Bounds; b.Inflate(S(2), S(2));
+            var b = Bounds;
+            if (!collapsed) b.Inflate(S(2), S(2));                       // a little slack while open; none on the folded tab
             bool inside = b.Contains(pt) || menuOpen || dragging;
             if (inside)
             {
                 outsideSince = DateTime.MinValue;
-                if (collapsed) SetCollapsed(false);
+                if (collapsed)
+                {
+                    // moving the pointer to the top edge (a browser's tab strip, the title bar) brushes past the tab: it only
+                    // unfolds when the pointer stays on it for a moment (a click on it unfolds it at once)
+                    if (insideSince == DateTime.MinValue) insideSince = DateTime.Now;
+                    else if ((DateTime.Now - insideSince).TotalMilliseconds >= ExpandDwellMs) { insideSince = DateTime.MinValue; SetCollapsed(false); }
+                }
             }
+            else if (collapsed && cfg.WidgetAutoHide) insideSince = DateTime.MinValue;
             else if (!collapsed && cfg.WidgetAutoHide)
             {
                 if (outsideSince == DateTime.MinValue) outsideSince = DateTime.Now;

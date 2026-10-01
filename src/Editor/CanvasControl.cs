@@ -34,6 +34,7 @@ namespace RXCapture
 
         // rendering cache
         Bitmap view, below;
+        Bitmap scaled; int viewVersion, scaledVersion = -1;      // scaled = the whole picture reduced to the current zoom (made once, painted 1:1)
         bool viewDirty = true;
         int liveFrom = -1;
         bool hasAlpha;
@@ -210,13 +211,34 @@ namespace RXCapture
 
         void BeginLive(int from) { liveFrom = from; below = null; viewDirty = true; }
         void EndLive() { liveFrom = -1; below = null; viewDirty = true; }
-        void Live() { viewDirty = true; Invalidate(); }
+        void Live()
+        {
+            // an object that is painted as a vector (not baked into the bitmap) needs no new bitmap while it is being drawn
+            if (!(liveFrom >= 0 && liveFrom >= viewBaked && viewBaked == BakedCount() && view != null)) viewDirty = true;
+            Invalidate();
+        }
+
+        int viewBaked = -1;           // how many objects (from the bottom) are drawn into `view`; the rest is painted as vectors at the zoom level
+
+        /// <summary>At 100% every object is baked into the picture bitmap (pixel exact, fast). At any other zoom the objects are painted
+        /// afterwards as vectors at screen resolution, so text, callouts and lines stay sharp when zoomed in; only what sits below a
+        /// blur / magnifier object is baked, because those read the pixels underneath.</summary>
+        int BakedCount()
+        {
+            if (Doc == null) return 0;
+            int n = Doc.Items.Count;
+            if (Math.Abs(Zoom - 1f) < 0.001f) return n;
+            int last = -1;
+            for (int i = 0; i < n; i++) { var k = Doc.Items[i].Kind; if (k == AnnKind.Blur || k == AnnKind.Magnify) last = i; }
+            return last + 1;
+        }
 
         void EnsureView()
         {
             if (Doc == null) return;
-            if (!viewDirty && view != null) return;
-            if (liveFrom >= 0 && liveFrom <= Doc.Items.Count)
+            int baked = BakedCount();
+            if (!viewDirty && view != null && viewBaked == baked) return;
+            if (liveFrom >= 0 && liveFrom < baked)
             {
                 if (below == null) below = Doc.Render(liveFrom);
                 if (view == null || view.Width != below.Width || view.Height != below.Height) view = new Bitmap(below.Width, below.Height, PixelFormat.Format32bppArgb);
@@ -226,15 +248,16 @@ namespace RXCapture
                     g.DrawImageUnscaled(below, 0, 0);
                     g.CompositingMode = CompositingMode.SourceOver;
                 }
-                Doc.DrawItems(view, liveFrom, -1);
+                Doc.DrawItems(view, liveFrom, baked);
             }
             else
             {
-                var nv = Doc.Render();
+                var nv = Doc.Render(baked);
                 view = nv;
             }
+            viewBaked = baked;
             if (!ReferenceEquals(alphaCheckedFor, Doc.Base)) { hasAlpha = Effects.HasTransparency(Doc.Base); alphaCheckedFor = Doc.Base; }
-            viewDirty = false;
+            viewVersion++; viewDirty = false;
         }
 
         // ------------------------------------------------------------------ geometry
@@ -340,6 +363,31 @@ namespace RXCapture
             }
         }
 
+        /// <summary>The picture reduced to the current zoom (IW x IH), cached until the picture or the zoom changes. Null when it would be huge.</summary>
+        Bitmap ScaledView()
+        {
+            int w = IW, h = IH;
+            if (view == null || w < 1 || h < 1 || (long)w * h > 60000000L) return null;
+            if (scaled != null && scaledVersion == viewVersion && scaled.Width == w && scaled.Height == h) return scaled;
+            if (scaled != null) { scaled.Dispose(); scaled = null; }
+            var bmp = Resampler.Resize(view, w, h);                   // Lanczos: small text stays readable
+            if (bmp == null)
+            {
+                bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb);      // very big picture: GDI+ bicubic instead
+                using (var g = Graphics.FromImage(bmp))
+                using (var ia = new ImageAttributes())
+                {
+                    g.CompositingMode = CompositingMode.SourceCopy;
+                    g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                    ia.SetWrapMode(WrapMode.TileFlipXY);
+                    g.DrawImage(view, new Rectangle(0, 0, w, h), 0, 0, view.Width, view.Height, GraphicsUnit.Pixel, ia);
+                }
+            }
+            scaled = bmp; scaledVersion = viewVersion;
+            return bmp;
+        }
+
         void PaintCanvas(PaintEventArgs e)
         {
             var g = e.Graphics;
@@ -360,18 +408,46 @@ namespace RXCapture
                     }
                 else using (var b = new SolidBrush(Color.White)) g.FillRectangle(b, vis);
 
-                g.InterpolationMode = Zoom >= 2f ? InterpolationMode.NearestNeighbor : (Zoom < 1f ? InterpolationMode.HighQualityBilinear : InterpolationMode.NearestNeighbor);
+                // Zoomed out: the whole picture is reduced once with the best filter and then painted 1:1 (text stays readable).
+                // Exactly 100%: pixel for pixel. Zoomed in up to 4x: bicubic, so edges stay smooth instead of turning into uneven blocks.
+                // 4x and more: nearest neighbour, to see and edit single pixels. While an object is being drawn on a very big picture (over 9 megapixels) a faster filter is used.
+                Bitmap reduced = Zoom < 0.999f && (liveFrom < 0 || view.Width * (long)view.Height <= 9000000L) ? ScaledView() : null;
                 g.PixelOffsetMode = PixelOffsetMode.Half;
-                float sx = (vis.X - dest.X) / Zoom, sy = (vis.Y - dest.Y) / Zoom;
-                float sw = vis.Width / Zoom, sh = vis.Height / Zoom;
-                using (var ia = new ImageAttributes())
+                if (reduced != null)
                 {
-                    ia.SetWrapMode(WrapMode.TileFlipXY);
-                    g.DrawImage(view, vis, sx, sy, sw, sh, GraphicsUnit.Pixel, ia);
+                    g.InterpolationMode = InterpolationMode.NearestNeighbor;
+                    g.DrawImage(reduced, vis, vis.X - dest.X, vis.Y - dest.Y, vis.Width, vis.Height, GraphicsUnit.Pixel);
+                }
+                else
+                {
+                    g.InterpolationMode = Zoom < 0.999f ? InterpolationMode.HighQualityBilinear
+                        : (Math.Abs(Zoom - 1f) < 0.001f || Zoom >= 4f ? InterpolationMode.NearestNeighbor : InterpolationMode.HighQualityBicubic);
+                    float sx = (vis.X - dest.X) / Zoom, sy = (vis.Y - dest.Y) / Zoom;
+                    float sw = vis.Width / Zoom, sh = vis.Height / Zoom;
+                    using (var ia = new ImageAttributes())
+                    {
+                        ia.SetWrapMode(WrapMode.TileFlipXY);
+                        g.DrawImage(view, vis, sx, sy, sw, sh, GraphicsUnit.Pixel, ia);
+                    }
                 }
             }
             g.PixelOffsetMode = PixelOffsetMode.Default;
             g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            // objects above the baked ones are painted here as vectors at the zoom level (sharp text / callouts / lines when zoomed in)
+            if (!vis.IsEmpty && viewBaked >= 0 && viewBaked < Doc.Items.Count)
+            {
+                var st = g.Save();
+                g.SetClip(vis);
+                g.TranslateTransform(dest.X, dest.Y);
+                g.ScaleTransform(Zoom, Zoom);
+                for (int i = viewBaked; i < Doc.Items.Count; i++)
+                {
+                    try { Doc.Items[i].Draw(g, view); }
+                    catch { /* one degenerate object must never break painting of the rest */ }
+                }
+                g.Restore(st);
+            }
 
             DrawOverlays(g, dest);
         }
@@ -1344,7 +1420,7 @@ namespace RXCapture
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) { ToolDefaultsStore.Changed -= OnDefaultsChanged; if (view != null) view.Dispose(); if (below != null) below.Dispose(); }
+            if (disposing) { ToolDefaultsStore.Changed -= OnDefaultsChanged; if (view != null) view.Dispose(); if (below != null) below.Dispose(); if (scaled != null) scaled.Dispose(); }
             base.Dispose(disposing);
         }
     }

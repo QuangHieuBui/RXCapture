@@ -91,6 +91,13 @@ RXCapture.exe --grab x,y,w,h out.png  # chụp một vùng, không giao diện
 ## Lịch sử phiên bản
 Mỗi lần đóng gói lại file cài đặt, thêm một mục ở đầu danh sách này (số phiên bản lấy từ `build-setup.ps1 -Version`).
 
+### 1.0.4 (chưa đóng gói)
+**Sửa lỗi**
+- Ảnh trong Editor bị mờ / vỡ khi xem ở mức zoom khác 100%: ảnh gốc luôn nguyên vẹn từng điểm ảnh (đã kiểm tra chụp, cắt, lật, vẽ đè), chỉ cách hiển thị kém. Thu nhỏ (ảnh lớn được tự co vừa khung) giờ dùng bộ lọc Lanczos (chữ nhỏ rõ hơn hẳn; 4K → Full HD mất ~34 ms); phóng to 100–400% dùng nội suy bicubic thay vì "điểm ảnh gần nhất" gây vỡ ô; 100% vẫn từng điểm ảnh, từ 400% trở lên hiện từng ô điểm ảnh để chỉnh chi tiết.
+- Callout, chữ, mũi tên, khung, nét vẽ bị mờ khi zoom: trước đây chúng bị "nướng" vào ảnh ở kích thước gốc rồi phóng to cùng ảnh nền. Giờ ở mọi mức zoom khác 100% chúng được vẽ lại ở độ phân giải màn hình (vector) nên nét luôn sắc (zoom 200–300% cạnh khung không còn điểm mờ); chỉ phần nằm dưới một đối tượng Blur / Magnify vẫn phải nướng vào ảnh vì các đối tượng đó đọc điểm ảnh bên dưới. Ở 100% và khi xuất file vẫn từng điểm ảnh như cũ.
+- Thanh công cụ (ribbon) của Editor nhỏ hơn ~16% (biểu tượng và khoảng cách: 120% → 100% tỉ lệ DPI; cao 136 → 114 px ở 100% DPI).
+- Capture Widget: thanh gập thấp hơn (8 → 5 px) và chỉ bung ra khi con trỏ dừng trên đó ~0,3 s (bấm vào thì bung ngay), để lướt chuột lên thanh tab trình duyệt không vô tình mở widget.
+
 ### 1.0.3
 **Mới**
 - Video MP4 nhẹ hơn khoảng một nửa: mã hóa H.264 theo chế độ chất lượng thay vì tốc độ bit cố định (màn hình tĩnh gần như không tốn dung lượng, chuyển động mới được cấp thêm). Đo trên 4 giây 1280×720: chữ cuộn + kéo cửa sổ 1575 KB → 718 KB, trang tĩnh 762 KB → 394 KB, độ nét vẫn ~35 dB (PSNR).

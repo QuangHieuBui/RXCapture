@@ -760,6 +760,229 @@ namespace RXCapture
                 return null;
             });
 
+            Check("capture widget: the folded tab is low, and only unfolds when the pointer rests on it", delegate
+            {
+                var cfg = AppSettings.Current; bool keepHide = cfg.WidgetAutoHide;
+                var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                Action<int> pump = delegate(int ms) { var t0 = DateTime.Now; while ((DateTime.Now - t0).TotalMilliseconds < ms) { Application.DoEvents(); System.Threading.Thread.Sleep(10); } };
+                Action<Point, int> hold = delegate(Point p, int ms) { var t0 = DateTime.Now; while ((DateTime.Now - t0).TotalMilliseconds < ms) { Cursor.Position = p; Application.DoEvents(); System.Threading.Thread.Sleep(15); } };   // keeps the pointer there even if the user touches the mouse
+                Point away = new Point(Screen.PrimaryScreen.Bounds.X + 40, Screen.PrimaryScreen.Bounds.Bottom - 120);
+                var oldPos = Cursor.Position;
+                cfg.WidgetAutoHide = true;
+                CaptureWidget w = null;
+                try
+                {
+                    Cursor.Position = away;
+                    w = new CaptureWidget(); w.Show(); pump(700);
+                    Func<bool> folded = () => (bool)typeof(CaptureWidget).GetField("collapsed", flags).GetValue(w);
+                    if (!folded()) return "the widget did not start folded";
+                    if (w.Height > 6) return "the folded tab is " + w.Height + " px high (expected 5)";
+                    Point onTab = new Point(w.Left + w.Width / 2, w.Top + w.Height / 2);
+                    hold(onTab, 110); hold(away, 500);            // brushing past it on the way to the browser tab strip
+                    if (!folded()) return "the widget unfolded when the pointer only brushed past it";
+                    hold(onTab, 900);                                                // resting on it
+                    if (folded()) return "the widget did not unfold when the pointer rested on the tab";
+                    hold(away, 900);
+                    if (!folded()) return "the widget did not fold again after the pointer left";
+                }
+                finally { cfg.WidgetAutoHide = keepHide; Cursor.Position = oldPos; if (w != null) { w.Hide(); w.Dispose(); } }
+                return null;
+            });
+
+            Check("image fidelity: grab, crop, render, flip, rotate, flatten and canvas edges keep every pixel", delegate
+            {
+                // a pixel-exact pattern: any resampling shows up as a changed pixel
+                var src = new Bitmap(317, 211, PixelFormat.Format32bppArgb);
+                var rnd = new Random(3);
+                for (int y = 0; y < src.Height; y++) for (int x = 0; x < src.Width; x++) src.SetPixel(x, y, Color.FromArgb(255, rnd.Next(256), rnd.Next(256), rnd.Next(256)));
+                Func<Bitmap, Bitmap, string, int, int, string> same = delegate(Bitmap a, Bitmap b, string what, int ox, int oy)
+                {
+                    int bad = 0;
+                    for (int y = 0; y < b.Height; y++) for (int x = 0; x < b.Width; x++)
+                    { var p = a.GetPixel(x + ox, y + oy); var q = b.GetPixel(x, y); if (p.ToArgb() != q.ToArgb()) bad++; }
+                    return bad == 0 ? null : what + ": " + bad + " of " + (b.Width * b.Height) + " pixels changed";
+                };
+                string r;
+                var doc = new Document(src);
+                using (var rd = doc.Render()) if ((r = same(src, rd, "Document keeps the base", 0, 0)) != null) return r;
+                using (var c = ScreenGrabber.Crop(src, new Rectangle(13, 7, 201, 99))) if ((r = same(src, c, "Crop", 13, 7)) != null) return r;
+                doc.Crop(new Rectangle(13, 7, 201, 99));
+                using (var rd = doc.Render()) if ((r = same(src, rd, "Document.Crop", 13, 7)) != null) return r;
+                var doc2 = new Document(src);
+                doc2.ResizeEdges(10, 6, 4, 8, Color.White);
+                using (var rd = doc2.Render()) { using (var inner = ScreenGrabber.Crop(rd, new Rectangle(10, 6, src.Width, src.Height))) if ((r = same(src, inner, "Canvas edges", 0, 0)) != null) return r; }
+                var doc3 = new Document(src);
+                doc3.RotateFlip(RotateFlipType.RotateNoneFlipX);
+                using (var rd = doc3.Render())
+                {
+                    int bad = 0;
+                    for (int y = 0; y < src.Height; y++) for (int x = 0; x < src.Width; x++) if (src.GetPixel(x, y).ToArgb() != rd.GetPixel(src.Width - 1 - x, y).ToArgb()) bad++;
+                    if (bad > 0) return "Flip: " + bad + " pixels changed";
+                }
+                // an object on top must leave the pixels around it alone
+                var doc4 = new Document(src);
+                var ar = Ann.Create(AnnKind.Arrow); ar.P1 = new PointF(20, 20); ar.P2 = new PointF(80, 40); doc4.Items.Add(ar);
+                doc4.Flatten();
+                using (var rd = doc4.Render())
+                {
+                    int bad = 0;
+                    for (int y = 120; y < 200; y++) for (int x = 150; x < 300; x++) if (src.GetPixel(x, y).ToArgb() != rd.GetPixel(x, y).ToArgb()) bad++;
+                    if (bad > 0) return "Flatten with an arrow changed " + bad + " pixels far from the arrow";
+                }
+                // a picture with another DPI (screenshots from other programs) must not be rescaled
+                using (var dpi = new Bitmap(src)) { dpi.SetResolution(144, 144); var d5 = new Document(dpi); using (var rd = d5.Render()) if ((r = same(src, rd, "144 dpi picture", 0, 0)) != null) return r; }
+                src.Dispose();
+                return null;
+            });
+
+            Check("editor canvas: zoomed-out text matches a proper area-average reduction, zoomed-in text is smooth, not blocky", delegate
+            {
+                // text-like content, rendered once
+                var bmp = new Bitmap(1920, 1080, PixelFormat.Format32bppArgb);
+                using (var g = Graphics.FromImage(bmp))
+                using (var fnt = new Font("Consolas", 11f))
+                {
+                    g.Clear(Color.White); g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+                    for (int i = 0; i < 60; i++) g.DrawString("line " + i + "  The quick brown fox jumps over the lazy dog 0123456789 { } ( ) ;", fnt, Brushes.Black, 12, 6 + i * 17);
+                }
+                var doc = new Document(bmp);
+                using (var host = new Form { ClientSize = new Size(900, 600), StartPosition = FormStartPosition.Manual })
+                {
+                    var cv = new CanvasControl { Dock = DockStyle.Fill };
+                    host.Controls.Add(cv); var hh = host.Handle; cv.SetDocument(doc);
+                    var lines = new System.Text.StringBuilder();
+                    foreach (float z in new[] { 0.5f, 0.58f, 0.75f })
+                    {
+                        cv.SetZoom(z, null);
+                        using (var shot = new Bitmap(cv.ClientSize.Width, cv.ClientSize.Height))
+                        {
+                            cv.DrawToBitmap(shot, new Rectangle(0, 0, shot.Width, shot.Height));
+                            var o = cv.Origin(); int dw = (int)Math.Round(bmp.Width * z), dh = (int)Math.Round(bmp.Height * z);
+                            // area-average reference for a 300 x 200 patch of the picture
+                            double se = 0; long n = 0; var refA = new double[300, 200]; var gotA = new double[300, 200];
+                            for (int y = 40; y < 240; y++) for (int x = 40; x < 340; x++)
+                            {
+                                double sx0 = x * (double)bmp.Width / dw, sx1 = (x + 1) * (double)bmp.Width / dw, sy0 = y * (double)bmp.Height / dh, sy1 = (y + 1) * (double)bmp.Height / dh;
+                                double acc = 0, wsum = 0;
+                                for (int yy = (int)Math.Floor(sy0); yy < Math.Ceiling(sy1); yy++) for (int xx = (int)Math.Floor(sx0); xx < Math.Ceiling(sx1); xx++)
+                                {
+                                    double wgt = (Math.Min(sx1, xx + 1) - Math.Max(sx0, xx)) * (Math.Min(sy1, yy + 1) - Math.Max(sy0, yy));
+                                    acc += wgt * bmp.GetPixel(Math.Min(xx, bmp.Width - 1), Math.Min(yy, bmp.Height - 1)).G; wsum += wgt;
+                                }
+                                double refv = acc / wsum, got = shot.GetPixel(o.X + x, o.Y + y).G;
+                                se += (refv - got) * (refv - got); n++; refA[x - 40, y - 240 + 200] = refv; gotA[x - 40, y - 240 + 200] = got;
+                            }
+                            double mse = se / n; double psnr = 10 * Math.Log10(255.0 * 255.0 / Math.Max(mse, 1e-9));
+                            double gr = 0, gg = 0;                                           // edge strength: the shown picture must not be softer than the area average
+                            for (int yy = 0; yy < 200; yy++) for (int xx = 1; xx < 300; xx++) { gr += Math.Abs(refA[xx, yy] - refA[xx - 1, yy]); gg += Math.Abs(gotA[xx, yy] - gotA[xx - 1, yy]); }
+                            double sharp = gg / Math.Max(gr, 1e-9);
+                            lines.AppendLine("  zoomed out to " + (z * 100).ToString("0") + "%: PSNR against an area-average reduction " + psnr.ToString("0.0") + " dB, edge strength " + (sharp * 100).ToString("0") + "% of it");
+                            if (psnr < 25.5 || sharp < 0.90) { log.Append(lines.ToString()); return "text at " + (z * 100).ToString("0") + "% is too soft or aliased (PSNR " + psnr.ToString("0.0") + " dB, edge strength " + (sharp * 100).ToString("0") + "%)"; }
+                        }
+                    }
+                    // zoomed in: a 1-pixel diagonal must not turn into uneven blocks. Measure the widths of the runs along a row at 150%
+                    cv.SetZoom(1.5f, null);
+                    using (var shot = new Bitmap(cv.ClientSize.Width, cv.ClientSize.Height))
+                    {
+                        cv.DrawToBitmap(shot, new Rectangle(0, 0, shot.Width, shot.Height));
+                        var o = cv.Origin(); int y = o.Y + 30 * 3 / 2 + 5; int blocks1 = 0, blocks2 = 0, run = 1;
+                        for (int x = o.X + 1; x < o.X + 300; x++)
+                        {
+                            if (Math.Abs(shot.GetPixel(x, y).G - shot.GetPixel(x - 1, y).G) < 3) run++;
+                            else { if (run == 1) blocks1++; else if (run == 2) blocks2++; run = 1; }
+                        }
+                        lines.AppendLine("  zoomed in to 150%: runs of 1 px: " + blocks1 + ", runs of 2 px: " + blocks2 + " (uneven 1/2 px blocks mean nearest-neighbour)");
+                        log.Append(lines.ToString());
+                        if (blocks1 > 5 && blocks2 > 5) return "150% zoom shows uneven 1 px / 2 px blocks (nearest-neighbour scaling)";
+                    }
+                }
+                return null;
+            });
+
+            Check("editor canvas: objects (shapes, callouts, text) stay sharp when zoomed in, they are not enlarged pixels", delegate
+            {
+                var bmp = new Bitmap(400, 300, PixelFormat.Format32bppArgb);
+                using (var g = Graphics.FromImage(bmp)) g.Clear(Color.White);
+                var doc = new Document(bmp);
+                var sh = Ann.Create(AnnKind.Shape); sh.P1 = new PointF(100, 100); sh.P2 = new PointF(300, 200); sh.Width = 4; sh.Stroke = Color.FromArgb(229, 57, 53); doc.Items.Add(sh);
+                using (var host = new Form { ClientSize = new Size(1300, 900), StartPosition = FormStartPosition.Manual })
+                {
+                    var cv = new CanvasControl { Dock = DockStyle.Fill };
+                    host.Controls.Add(cv); var hh = host.Handle; cv.SetDocument(doc);
+                    var res = new System.Text.StringBuilder();
+                    foreach (float z in new[] { 2f, 3f, 0.6f })
+                    {
+                        cv.SetZoom(z, null);
+                        using (var shot = new Bitmap(cv.ClientSize.Width, cv.ClientSize.Height))
+                        {
+                            cv.DrawToBitmap(shot, new Rectangle(0, 0, shot.Width, shot.Height));
+                            var o = cv.Origin(); int y = o.Y + (int)(150 * z);
+                            int soft = 0, red = 0;
+                            for (int x = o.X + (int)(90 * z); x < o.X + (int)(115 * z); x++)             // across the left side of the rectangle
+                            {
+                                var c = shot.GetPixel(x, y);
+                                bool white = c.R > 245 && c.G > 245 && c.B > 245, solid = c.R > 215 && c.G < 70 && c.B < 70;
+                                if (solid) red++; else if (!white) soft++;
+                            }
+                            res.AppendLine("  zoom " + (z * 100).ToString("0") + "%: rectangle side is " + red + " solid px + " + soft + " soft edge px");
+                            if (z >= 2f && soft > 4) { log.Append(res.ToString()); return "at " + (z * 100).ToString("0") + "% the rectangle edge is blurred (" + soft + " soft pixels): the object is enlarged, not drawn at screen resolution"; }
+                        }
+                    }
+                    log.Append(res.ToString());
+                }
+                return null;
+            });
+
+            Check("editor canvas: reducing a 4K screenshot for the zoom level takes well under half a second", delegate
+            {
+                using (var big = new Bitmap(3840, 2160, PixelFormat.Format32bppArgb))
+                {
+                    using (var g = Graphics.FromImage(big)) { g.Clear(Color.White); using (var f = new Font("Consolas", 12f)) for (int i = 0; i < 100; i++) g.DrawString("line " + i + " the quick brown fox jumps over the lazy dog", f, Brushes.Black, 10, 4 + i * 20); }
+                    Resampler.Resize(big, 100, 100).Dispose();                                // warm up the JIT and the thread pool
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    using (var small = Resampler.Resize(big, 1920, 1080)) { if (small == null || small.Width != 1920) return "no result"; }
+                    long ms = sw.ElapsedMilliseconds;
+                    log.AppendLine("  Lanczos reduction of 3840x2160 to 1920x1080: " + ms + " ms");
+                    return ms > 500 ? "reducing a 4K picture took " + ms + " ms" : null;
+                }
+            });
+
+            Check("editor canvas sharpness at several zoom levels (info)", delegate
+            {
+                // a sharp step edge (black | white) with a thin line, drawn through the real CanvasControl; measure how wide the edge looks on screen
+                var bmp = new Bitmap(600, 400, PixelFormat.Format32bppArgb);
+                using (var g = Graphics.FromImage(bmp)) { g.Clear(Color.White); g.FillRectangle(Brushes.Black, 0, 0, 300, 400); g.FillRectangle(Brushes.Black, 400, 0, 1, 400); }
+                var doc = new Document(bmp);
+                using (var host = new Form { ClientSize = new Size(700, 500), StartPosition = FormStartPosition.Manual })
+                {
+                    var cv = new CanvasControl { Dock = DockStyle.Fill };
+                    host.Controls.Add(cv); var hh = host.Handle; cv.SetDocument(doc);
+                    foreach (float z in new[] { 0.25f, 0.4f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f, 3f, 4f, 8f })
+                    {
+                        cv.SetZoom(z, null);
+                        using (var shot = new Bitmap(cv.ClientSize.Width, cv.ClientSize.Height))
+                        {
+                            cv.DrawToBitmap(shot, new Rectangle(0, 0, shot.Width, shot.Height));
+                            int y = shot.Height / 2;
+                            // edge width: pixels strictly between black and white around the first black->white step
+                            int first = -1, width = 0, thinMin = 255;
+                            for (int x = 0; x < shot.Width; x++)
+                            {
+                                int v = shot.GetPixel(x, y).R;
+                                if (first < 0 && v < 20) first = x;
+                                if (first >= 0 && v > 235 && x > first + 5) break;
+                                if (first >= 0 && v >= 20 && v <= 235) width++;
+                            }
+                            // the 1 px line: darkest value near x = 400 * zoom + origin: take the darkest pixel to the right of the step
+                            int lx0 = first + (int)(100 * z) - 3, lx1 = first + (int)(100 * z) + (int)Math.Ceiling(z) + 3;
+                            for (int x = Math.Max(0, lx0); x < Math.Min(shot.Width, lx1); x++) thinMin = Math.Min(thinMin, shot.GetPixel(x, y).R);
+                            log.AppendLine("  zoom " + (z * 100).ToString("0") + "%: step edge is " + width + " px wide, the 1 px line reaches " + thinMin + "/255");
+                        }
+                    }
+                }
+                return null;
+            });
+
             Check("convert speed: a 10 s full HD recording converts to MP4 faster than real time", delegate
             {
                 const int W = 1920, H = 1080, Fps = 24;
@@ -1021,6 +1244,7 @@ namespace RXCapture
                             int tab = 1; string tool = null;
                             foreach (var a in args) { if (a.StartsWith("tab=")) tab = int.Parse(a.Substring(4)); if (a.StartsWith("tool=")) tool = a.Substring(5); }
                             ed.DebugSet(tab, tool);
+                            foreach (var a in args) if (a.StartsWith("zoom=")) ed.Canvas.SetZoom(float.Parse(a.Substring(5), System.Globalization.CultureInfo.InvariantCulture), null);
                             if (Array.IndexOf(args, "selcallout") >= 0) ed.Canvas.SetSelection(new System.Collections.Generic.List<Ann> { ed.Doc.Items.Find(a => a.Kind == AnnKind.Callout) });
                         };
                         break;
