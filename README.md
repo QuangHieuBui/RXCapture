@@ -15,11 +15,11 @@ Dùng `csc.exe` có sẵn của Windows (C# 5) — không cần Visual Studio ha
 
 ## Đóng gói file cài đặt (Setup)
 ```
-powershell -ExecutionPolicy Bypass -File build-setup.ps1 [-Version 1.0.3]
+powershell -ExecutionPolicy Bypass -File build-setup.ps1 [-Version 1.0.4]
 ```
 Tạo `dist\RXCapture-Setup-<phiên bản>.exe` (~0,6 MB, tự chứa toàn bộ ứng dụng; chỉ cần `csc.exe` có sẵn của Windows). Bấm đúp file này để cài: chọn thư mục (mặc định `%LOCALAPPDATA%\Programs\RXCapture`), tùy chọn biểu tượng ở màn hình nền, chạy cùng Windows và chạy ngay sau khi cài. Cài cho tài khoản hiện tại, **không cần quyền quản trị**; có mục trong *Settings > Apps* để gỡ, và `Uninstall.exe` trong thư mục cài (hỏi có xóa luôn cài đặt/thư viện hay không). Dòng lệnh: `/S` (im lặng), `/D=<thư mục>`, `/nodesktop`, `/startup` (chạy cùng Windows), `/launch`; gỡ im lặng: `Uninstall.exe /uninstall /S [/removedata]`. Cài đè lên bản cũ sẽ tự tắt RXCapture đang chạy từ thư mục đó và giữ nguyên dữ liệu.
 
-**Lưu từng phiên bản trên git:** mỗi lần `build-setup.ps1` chạy, bản dựng còn được chép vào `releases<phiên bản>` (file cài đặt, bản portable `.zip` chỉ gồm `RXCapture.exe` + `.config`, `.sha256`, chứng chỉ công khai `.cer`, `BUILD.txt` ghi commit và ngày build). Thư mục này **được commit lên git** để giữ lịch sử và dùng lại bản cũ. Một thư mục phiên bản đã có sẽ không bị ghi đè: muốn build bản mới hãy tăng `-Version` (ví dụ `-Version 1.0.4`); `-Force` mới cho ghi đè, `-NoRelease` để build mà không lưu.
+**Lưu từng phiên bản trên git:** mỗi lần `build-setup.ps1` chạy, bản dựng còn được chép vào `releases<phiên bản>` (file cài đặt, bản portable `.zip` chỉ gồm `RXCapture.exe` + `.config`, `.sha256`, chứng chỉ công khai `.cer`, `BUILD.txt` ghi commit và ngày build). Thư mục này **được commit lên git** để giữ lịch sử và dùng lại bản cũ. Một thư mục phiên bản đã có sẽ không bị ghi đè: muốn build bản mới hãy tăng `-Version` (ví dụ `-Version 1.0.5`); `-Force` mới cho ghi đè, `-NoRelease` để build mà không lưu.
 
 ## Phím tắt toàn cục (đổi được trong Settings > Hotkeys)
 | Phím | Chức năng |
@@ -91,7 +91,7 @@ RXCapture.exe --grab x,y,w,h out.png  # chụp một vùng, không giao diện
 ## Lịch sử phiên bản
 Mỗi lần đóng gói lại file cài đặt, thêm một mục ở đầu danh sách này (số phiên bản lấy từ `build-setup.ps1 -Version`).
 
-### 1.0.4 (chưa đóng gói)
+### 1.0.4
 **Sửa lỗi**
 - Ảnh trong Editor bị mờ / vỡ khi xem ở mức zoom khác 100%: ảnh gốc luôn nguyên vẹn từng điểm ảnh (đã kiểm tra chụp, cắt, lật, vẽ đè), chỉ cách hiển thị kém. Thu nhỏ (ảnh lớn được tự co vừa khung) giờ dùng bộ lọc Lanczos (chữ nhỏ rõ hơn hẳn; 4K → Full HD mất ~34 ms); phóng to 100–400% dùng nội suy bicubic thay vì "điểm ảnh gần nhất" gây vỡ ô; 100% vẫn từng điểm ảnh, từ 400% trở lên hiện từng ô điểm ảnh để chỉnh chi tiết.
 - Callout, chữ, mũi tên, khung, nét vẽ bị mờ khi zoom: trước đây chúng bị "nướng" vào ảnh ở kích thước gốc rồi phóng to cùng ảnh nền. Giờ ở mọi mức zoom khác 100% chúng được vẽ lại ở độ phân giải màn hình (vector) nên nét luôn sắc (zoom 200–300% cạnh khung không còn điểm mờ); chỉ phần nằm dưới một đối tượng Blur / Magnify vẫn phải nướng vào ảnh vì các đối tượng đó đọc điểm ảnh bên dưới. Ở 100% và khi xuất file vẫn từng điểm ảnh như cũ.
