@@ -15,7 +15,7 @@ Dùng `csc.exe` có sẵn của Windows (C# 5) — không cần Visual Studio ha
 
 ## Đóng gói file cài đặt (Setup)
 ```
-powershell -ExecutionPolicy Bypass -File build-setup.ps1 [-Version 1.0.4]
+powershell -ExecutionPolicy Bypass -File build-setup.ps1 [-Version 1.0.5]
 ```
 Tạo `dist\RXCapture-Setup-<phiên bản>.exe` (~0,6 MB, tự chứa toàn bộ ứng dụng; chỉ cần `csc.exe` có sẵn của Windows). Bấm đúp file này để cài: chọn thư mục (mặc định `%LOCALAPPDATA%\Programs\RXCapture`), tùy chọn biểu tượng ở màn hình nền, chạy cùng Windows và chạy ngay sau khi cài. Cài cho tài khoản hiện tại, **không cần quyền quản trị**; có mục trong *Settings > Apps* để gỡ, và `Uninstall.exe` trong thư mục cài (hỏi có xóa luôn cài đặt/thư viện hay không). Dòng lệnh: `/S` (im lặng), `/D=<thư mục>`, `/nodesktop`, `/startup` (chạy cùng Windows), `/launch`; gỡ im lặng: `Uninstall.exe /uninstall /S [/removedata]`. Cài đè lên bản cũ sẽ tự tắt RXCapture đang chạy từ thư mục đó và giữ nguyên dữ liệu.
 
@@ -90,6 +90,11 @@ RXCapture.exe --grab x,y,w,h out.png  # chụp một vùng, không giao diện
 
 ## Lịch sử phiên bản
 Mỗi lần đóng gói lại file cài đặt, thêm một mục ở đầu danh sách này (số phiên bản lấy từ `build-setup.ps1 -Version`).
+
+### 1.0.5
+**Sửa lỗi**
+- Ảnh vỡ / răng cưa khi phóng to trong Editor: từ 100% đến dưới 800% ảnh được phóng bằng bộ lọc Lanczos (trước đây từ 400% trở lên hiện thành ô vuông, trong khi Snipping Tool vẫn làm mượt); chỉ từ 800% mới hiện từng điểm ảnh để chỉnh chi tiết. Vùng đang xem được tính một lần và giữ lại nên cuộn ảnh không bị giật.
+- Ảnh thu nhỏ (thumbnail) trong thư viện bị răng cưa do bị GDI+ co hai lần: giờ dùng Lanczos khi tạo và khi vẽ đúng kích thước ô.
 
 ### 1.0.4
 **Sửa lỗi**

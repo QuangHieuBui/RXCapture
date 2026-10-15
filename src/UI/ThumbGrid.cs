@@ -12,6 +12,7 @@ namespace RXCapture
     {
         List<LibItem> items = new List<LibItem>();
         readonly Dictionary<string, Bitmap> thumbs = new Dictionary<string, Bitmap>();
+        readonly Dictionary<string, Bitmap> fitted = new Dictionary<string, Bitmap>();
         public LibItem Selected;
         public int CellW = 132, CellH = 82;
         int hover = -1;
@@ -74,7 +75,9 @@ namespace RXCapture
             var keep = new HashSet<string>();
             foreach (var it in items) keep.Add(it.ThumbFile);
             foreach (var k in new List<string>(thumbs.Keys))
-                if (!keep.Contains(k)) { thumbs[k].Dispose(); thumbs.Remove(k); }
+                if (!keep.Contains(k)) { if (thumbs[k] != null) thumbs[k].Dispose(); thumbs.Remove(k); }
+            foreach (var v in fitted.Values) v.Dispose();
+            fitted.Clear();
             if (Selected != null)
             {
                 LibItem match = null;
@@ -212,6 +215,20 @@ namespace RXCapture
             return -1;
         }
 
+        /// <summary>The thumbnail reduced (Lanczos) to exactly the size it is painted at, cached; GDI+ would alias it when shrinking by 2x or more.</summary>
+        Bitmap FitThumb(string key, Bitmap th, int w, int h)
+        {
+            if (w == th.Width && h == th.Height) return th;
+            string k = key + "|" + w + "x" + h;
+            Bitmap b;
+            if (fitted.TryGetValue(k, out b)) return b;
+            b = Resampler.Resize(th, w, h);
+            if (b == null) return th;
+            if (fitted.Count > 400) { foreach (var v in fitted.Values) v.Dispose(); fitted.Clear(); }
+            fitted[k] = b;
+            return b;
+        }
+
         Bitmap Thumb(LibItem it)
         {
             Bitmap b;
@@ -251,7 +268,12 @@ namespace RXCapture
                     int w = Math.Max(1, (int)(th.Width * k)), h = Math.Max(1, (int)(th.Height * k));
                     ir = new Rectangle(box.X + (box.Width - w) / 2, box.Y + (box.Height - h) / 2, w, h);
                     using (var b = new SolidBrush(Color.White)) g.FillRectangle(b, ir);
-                    g.DrawImage(th, ir);
+                    var fit = FitThumb(it.ThumbFile, th, ir.Width, ir.Height);
+                    g.InterpolationMode = InterpolationMode.NearestNeighbor;      // already at the exact size: copy pixel for pixel
+                    g.PixelOffsetMode = PixelOffsetMode.Half;
+                    g.DrawImage(fit, ir.X, ir.Y, ir.Width, ir.Height);
+                    g.PixelOffsetMode = PixelOffsetMode.Default;
+                    g.InterpolationMode = InterpolationMode.HighQualityBilinear;
                 }
                 if (it.IsVideo)
                 {

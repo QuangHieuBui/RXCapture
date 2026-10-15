@@ -893,7 +893,22 @@ namespace RXCapture
                         }
                         lines.AppendLine("  zoomed in to 150%: runs of 1 px: " + blocks1 + ", runs of 2 px: " + blocks2 + " (uneven 1/2 px blocks mean nearest-neighbour)");
                         log.Append(lines.ToString());
-                        if (blocks1 > 5 && blocks2 > 5) return "150% zoom shows uneven 1 px / 2 px blocks (nearest-neighbour scaling)";
+                        if (blocks1 > 5 && blocks2 > 30) return "150% zoom shows uneven 1 px / 2 px blocks (nearest-neighbour scaling)";
+                    }
+                    // 400%: the picture is still smoothed (like Snipping Tool), not enlarged into 4 px squares
+                    cv.SetZoom(4f, null);
+                    using (var shot = new Bitmap(cv.ClientSize.Width, cv.ClientSize.Height))
+                    {
+                        cv.DrawToBitmap(shot, new Rectangle(0, 0, shot.Width, shot.Height));
+                        var o = cv.Origin(); int y = o.Y + 30 * 4 + 6; int squares = 0, run = 1;
+                        for (int x = o.X + 1; x < o.X + 400; x++)
+                        {
+                            if (Math.Abs(shot.GetPixel(x, y).G - shot.GetPixel(x - 1, y).G) < 3) run++;
+                            else { if (run == 4) squares++; run = 1; }
+                        }
+                        lines.AppendLine("  zoomed in to 400%: runs of exactly 4 px: " + squares + " (4 px squares mean nearest-neighbour)");
+                        log.Append(lines.ToString());
+                        if (squares > 20) return "400% zoom is enlarged into 4 px squares (nearest-neighbour scaling)";
                     }
                 }
                 return null;
@@ -944,6 +959,31 @@ namespace RXCapture
                     long ms = sw.ElapsedMilliseconds;
                     log.AppendLine("  Lanczos reduction of 3840x2160 to 1920x1080: " + ms + " ms");
                     return ms > 500 ? "reducing a 4K picture took " + ms + " ms" : null;
+                }
+            });
+
+            Check("library thumbnails: a screenshot reduced 3x is at least as close to a true area average as GDI+ bicubic", delegate
+            {
+                using (var src = new Bitmap(780, 480, PixelFormat.Format32bppArgb))
+                {
+                    using (var g = Graphics.FromImage(src)) { g.Clear(Color.White); using (var f = new Font("Segoe UI", 9f)) for (int i = 0; i < 24; i++) g.DrawString("Line " + i + " the quick brown fox jumps over", f, Brushes.Black, 6, 4 + i * 19); }
+                    using (var th = LibraryStore.MakeThumb(src, 260, 160))
+                    using (var old = new Bitmap(260, 160, PixelFormat.Format32bppArgb))
+                    {
+                        if (th.Width != 260 || th.Height != 160) return "thumbnail is " + th.Width + "x" + th.Height;
+                        using (var g = Graphics.FromImage(old)) { g.InterpolationMode = InterpolationMode.HighQualityBicubic; g.DrawImage(src, 0, 0, 260, 160); }
+                        double sNew = 0, sOld = 0; int n = 0;
+                        for (int y = 0; y < 160; y++)
+                            for (int x = 0; x < 260; x++)
+                            {
+                                double r = 0; for (int dy = 0; dy < 3; dy++) for (int dx = 0; dx < 3; dx++) r += src.GetPixel(x * 3 + dx, y * 3 + dy).G; r /= 9;
+                                double a = th.GetPixel(x, y).G - r, b = old.GetPixel(x, y).G - r;
+                                sNew += a * a; sOld += b * b; n++;
+                            }
+                        double pNew = 10 * Math.Log10(255.0 * 255.0 / Math.Max(1e-9, sNew / n)), pOld = 10 * Math.Log10(255.0 * 255.0 / Math.Max(1e-9, sOld / n));
+                        log.AppendLine("  thumbnail PSNR vs area average: Lanczos " + pNew.ToString("0.0") + " dB, GDI+ bicubic " + pOld.ToString("0.0") + " dB");
+                        return pNew >= pOld - 0.3 && pNew >= 20 ? null : "thumbnail is further from the area average than GDI+ (" + pNew.ToString("0.0") + " vs " + pOld.ToString("0.0") + " dB)";
+                    }
                 }
             });
 

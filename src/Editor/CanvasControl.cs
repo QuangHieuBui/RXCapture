@@ -388,6 +388,39 @@ namespace RXCapture
             return bmp;
         }
 
+        Bitmap upBmp; Rectangle upSrc; float upZoom; int upVersion = -1;
+
+        /// <summary>Zoomed in between 100 % and 800 %: the visible part of the picture is enlarged with the Lanczos filter (sharper than GDI+ bicubic, no halos).
+        /// The enlarged piece is a bit bigger than the window and kept, so scrolling does not recompute it every step.</summary>
+        bool DrawEnlarged(Graphics g, Rectangle vis, Rectangle dest)
+        {
+            int x0 = Math.Max(0, (int)Math.Floor((vis.X - dest.X) / Zoom) - 1), y0 = Math.Max(0, (int)Math.Floor((vis.Y - dest.Y) / Zoom) - 1);
+            int x1 = Math.Min(view.Width, (int)Math.Ceiling((vis.Right - dest.X) / Zoom) + 1), y1 = Math.Min(view.Height, (int)Math.Ceiling((vis.Bottom - dest.Y) / Zoom) + 1);
+            if (x1 <= x0 || y1 <= y0) return false;
+            var need = new Rectangle(x0, y0, x1 - x0, y1 - y0);
+            if (upBmp == null || upVersion != viewVersion || upZoom != Zoom || !upSrc.Contains(need))
+            {
+                var r = Rectangle.Intersect(new Rectangle(need.X - need.Width / 4, need.Y - need.Height / 4, need.Width * 3 / 2, need.Height * 3 / 2), new Rectangle(0, 0, view.Width, view.Height));
+                if ((long)Math.Round(r.Width * Zoom) * (long)Math.Round(r.Height * Zoom) > 16000000L) r = need;
+                int dw = (int)Math.Round(r.Width * Zoom), dh = (int)Math.Round(r.Height * Zoom);
+                if (dw < 1 || dh < 1 || (long)dw * dh > 24000000L) return false;
+                Bitmap crop = null, big = null;
+                try { crop = view.Clone(r, PixelFormat.Format32bppArgb); big = Resampler.Resize(crop, dw, dh); }
+                catch { big = null; }
+                finally { if (crop != null) crop.Dispose(); }
+                if (big == null) return false;
+                if (upBmp != null) upBmp.Dispose();
+                upBmp = big; upSrc = r; upZoom = Zoom; upVersion = viewVersion;
+            }
+            int px = dest.X + (int)Math.Round(upSrc.X * Zoom), py = dest.Y + (int)Math.Round(upSrc.Y * Zoom);
+            var st = g.Save();
+            g.SetClip(vis);
+            g.InterpolationMode = InterpolationMode.NearestNeighbor;
+            g.DrawImage(upBmp, new Rectangle(px, py, upBmp.Width, upBmp.Height), 0, 0, upBmp.Width, upBmp.Height, GraphicsUnit.Pixel);
+            g.Restore(st);
+            return true;
+        }
+
         void PaintCanvas(PaintEventArgs e)
         {
             var g = e.Graphics;
@@ -409,8 +442,8 @@ namespace RXCapture
                 else using (var b = new SolidBrush(Color.White)) g.FillRectangle(b, vis);
 
                 // Zoomed out: the whole picture is reduced once with the best filter and then painted 1:1 (text stays readable).
-                // Exactly 100%: pixel for pixel. Zoomed in up to 4x: bicubic, so edges stay smooth instead of turning into uneven blocks.
-                // 4x and more: nearest neighbour, to see and edit single pixels. While an object is being drawn on a very big picture (over 9 megapixels) a faster filter is used.
+                // Exactly 100%: pixel for pixel. Zoomed in up to 8x: Lanczos (DrawEnlarged), so edges stay smooth instead of turning into blocks.
+                // 8x and more: nearest neighbour, to see and edit single pixels. While an object is being drawn on a very big picture (over 9 megapixels) a faster filter is used.
                 Bitmap reduced = Zoom < 0.999f && (liveFrom < 0 || view.Width * (long)view.Height <= 9000000L) ? ScaledView() : null;
                 g.PixelOffsetMode = PixelOffsetMode.Half;
                 if (reduced != null)
@@ -418,10 +451,11 @@ namespace RXCapture
                     g.InterpolationMode = InterpolationMode.NearestNeighbor;
                     g.DrawImage(reduced, vis, vis.X - dest.X, vis.Y - dest.Y, vis.Width, vis.Height, GraphicsUnit.Pixel);
                 }
+                else if (Zoom > 1.001f && Zoom < 8f && liveFrom < 0 && DrawEnlarged(g, vis, dest)) { }
                 else
                 {
                     g.InterpolationMode = Zoom < 0.999f ? InterpolationMode.HighQualityBilinear
-                        : (Math.Abs(Zoom - 1f) < 0.001f || Zoom >= 4f ? InterpolationMode.NearestNeighbor : InterpolationMode.HighQualityBicubic);
+                        : (Math.Abs(Zoom - 1f) < 0.001f || Zoom >= 8f ? InterpolationMode.NearestNeighbor : InterpolationMode.HighQualityBicubic);
                     float sx = (vis.X - dest.X) / Zoom, sy = (vis.Y - dest.Y) / Zoom;
                     float sw = vis.Width / Zoom, sh = vis.Height / Zoom;
                     using (var ia = new ImageAttributes())

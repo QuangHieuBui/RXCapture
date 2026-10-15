@@ -96,11 +96,14 @@ namespace RXCapture
             float k = Math.Min((float)maxW / src.Width, (float)maxH / src.Height);
             if (k > 1) k = 1;
             int w = Math.Max(1, (int)(src.Width * k)), h = Math.Max(1, (int)(src.Height * k));
+            var lz = Resampler.Resize(src, w, h);                      // Lanczos: no stair-steps on a strongly reduced screenshot
+            if (lz != null) return lz;
             var b = new Bitmap(w, h, PixelFormat.Format32bppArgb);
             using (var g = Graphics.FromImage(b))
             {
                 g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                g.DrawImage(src, 0, 0, w, h);
+                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                g.DrawImage(src, new Rectangle(0, 0, w, h), 0, 0, src.Width, src.Height, GraphicsUnit.Pixel);
             }
             return b;
         }
