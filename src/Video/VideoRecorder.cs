@@ -44,50 +44,27 @@ namespace RXCapture
             finally { IsActive = false; current = null; }
         }
 
+        /// <summary>How long the last <see cref="Finish"/> took (stop clicked -> the recording is in the library and the editor shows it).</summary>
+        internal static long LastFinishMs;
+
+        /// <summary>The recording is kept as it was written (an AVI, plus its WAV for sound) and opened in the editor at once. Nothing is converted here:
+        /// the MP4 / GIF is made when the user saves it (<see cref="VideoExport"/>).</summary>
         static void Finish(RecordingResult r)
         {
-            var cfg = AppSettings.Current;
-            string path = r.AviPath;
+            var clock = System.Diagnostics.Stopwatch.StartNew();
             try
             {
-                Mp4Writer.Encoder.Quality = AppSettings.QualityFor(cfg.VideoQuality);       // how small the MP4 gets
-                string fmt = cfg.VideoFormat;
-                if (r.WavPath != null) fmt = "mp4";                    // only MP4 carries sound
-                if (fmt == "gif")
-                {
-                    string gif = Path.ChangeExtension(r.AviPath, ".gif");
-                    using (var wait = new BusyForm(Loc.T("Creating GIF…"))) { wait.Show(); Application.DoEvents(); AviToGif(r.AviPath, gif, cfg.GifMaxWidth, r.Fps); }
-                    File.Delete(r.AviPath); path = gif;
-                }
-                else if (fmt == "mp4")
-                {
-                    string mp4 = Path.ChangeExtension(r.AviPath, ".mp4");
-                    bool done;
-                    using (var wait = new BusyForm(Loc.T("Converting to MP4…")))
-                    {
-                        wait.Show(); Application.DoEvents();
-                        done = Mp4Writer.Convert(r.AviPath, mp4, r.Fps, r.WavPath);           // Windows' own H.264 (+ AAC) encoder
-                        if (!done && r.WavPath != null)
-                        {
-                            done = Mp4Writer.Convert(r.AviPath, mp4, r.Fps);                   // no AAC encoder: keep the picture at least
-                            if (done) App.Balloon(Loc.T("The sound could not be added to the video."));
-                        }
-                        string ff = done ? null : FindFfmpeg();                                // fallback when Windows has none (N editions)
-                        if (!done && ff != null) done = RunFfmpeg(ff, r.AviPath, mp4);
-                    }
-                    if (done) { File.Delete(r.AviPath); path = mp4; }
-                    else App.Balloon(Loc.T("MP4 encoding is not available - the video was saved as AVI."));
-                }
-                var item = LibraryStore.AddVideo(path, r.FirstFrame, (int)Math.Round(r.Seconds));
+                var item = LibraryStore.AddVideo(r.AviPath, r.FirstFrame, (int)Math.Round(r.Seconds), r.WavPath);
                 App.ShowEditor();
                 if (item != null) App.Editor.ShowNewVideo(item);                      // open the new recording, not whatever was open before
-                App.Balloon(Loc.T("Video saved to the library"));
+                App.Balloon(Loc.T("Recording is in the library - Save it to make an MP4"));
             }
             catch (Exception ex) { MessageBox.Show(ex.Message, "RXCapture", MessageBoxButtons.OK, MessageBoxIcon.Error); }
             finally
             {
                 if (r.FirstFrame != null) r.FirstFrame.Dispose();
-                if (r.WavPath != null) try { File.Delete(r.WavPath); } catch { }
+                if (r.WavPath != null) try { File.Delete(r.WavPath); } catch { }      // already moved with the video; only a failed add leaves it here
+                LastFinishMs = clock.ElapsedMilliseconds;
             }
         }
 
@@ -100,7 +77,7 @@ namespace RXCapture
             return null;
         }
 
-        static bool RunFfmpeg(string ff, string input, string output)
+        internal static bool RunFfmpeg(string ff, string input, string output)
         {
             try
             {

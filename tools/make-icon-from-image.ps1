@@ -1,11 +1,30 @@
 # Builds res\app.ico (+ res\logo.png) from a logo image: removes the light background around the rounded
 # icon (flood fill from the borders), crops to the icon shape and writes a multi-size PNG-compressed .ico.
 # Usage: powershell -File tools\make-icon-from-image.ps1 -Source path\to\logo.jpg [-Preview out.png]
-param([Parameter(Mandatory = $true)][string]$Source, [string]$Preview = '', [int]$Tolerance = 105, [int]$Erode = 2)
+#   -Crop "x,y,w,h" [-Radius 0.22]: for a logo that is not dark blue (the flood fill below would eat it): cut that rectangle out of the
+#   source, scale it to a square and give it rounded corners (Radius = corner radius as a fraction of the side) instead of removing the background.
+param([Parameter(Mandatory = $true)][string]$Source, [string]$Preview = '', [int]$Tolerance = 105, [int]$Erode = 2, [string]$Crop = '', [double]$Radius = 0.22)
 Add-Type -AssemblyName System.Drawing
 $root = Split-Path $PSScriptRoot -Parent
 
 $src = [System.Drawing.Bitmap]::FromFile((Resolve-Path $Source))
+if ($Crop) {
+    $cr = $Crop.Split(',') | ForEach-Object { [int]$_ }
+    $side = 1024                                                   # work big, the sizes below are reduced from this
+    $sq = New-Object System.Drawing.Bitmap $side, $side, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $gq = [System.Drawing.Graphics]::FromImage($sq)
+    $gq.Clear([System.Drawing.Color]::Transparent)
+    $gq.InterpolationMode = 'HighQualityBicubic'; $gq.PixelOffsetMode = 'HighQuality'; $gq.SmoothingMode = 'AntiAlias'
+    $rr = $Radius * $side
+    $gp = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $gp.AddArc(0, 0, 2 * $rr, 2 * $rr, 180, 90); $gp.AddArc($side - 2 * $rr, 0, 2 * $rr, 2 * $rr, 270, 90)
+    $gp.AddArc($side - 2 * $rr, $side - 2 * $rr, 2 * $rr, 2 * $rr, 0, 90); $gp.AddArc(0, $side - 2 * $rr, 2 * $rr, 2 * $rr, 90, 90); $gp.CloseFigure()
+    $gq.SetClip($gp)
+    $ia0 = New-Object System.Drawing.Imaging.ImageAttributes; $ia0.SetWrapMode([System.Drawing.Drawing2D.WrapMode]::TileFlipXY)
+    $gq.DrawImage($src, (New-Object System.Drawing.Rectangle 0, 0, $side, $side), $cr[0], $cr[1], $cr[2], $cr[3], [System.Drawing.GraphicsUnit]::Pixel, $ia0)
+    $gq.Dispose(); $src.Dispose()
+}
+else {
 $w = $src.Width; $h = $src.Height
 $bmp = New-Object System.Drawing.Bitmap $w, $h, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
 $g0 = [System.Drawing.Graphics]::FromImage($bmp); $g0.DrawImage($src, 0, 0, $w, $h); $g0.Dispose(); $src.Dispose()
@@ -84,6 +103,7 @@ $gs = [System.Drawing.Graphics]::FromImage($sq)
 $gs.Clear([System.Drawing.Color]::Transparent)
 $gs.DrawImage($bmp, [int](($side - $cw) / 2), [int](($side - $ch) / 2), (New-Object System.Drawing.Rectangle $bb[0], $bb[1], $cw, $ch), [System.Drawing.GraphicsUnit]::Pixel)
 $gs.Dispose(); $bmp.Dispose()
+}
 
 function Resize([System.Drawing.Bitmap]$b, [int]$s) {
     $o = New-Object System.Drawing.Bitmap $s, $s, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)

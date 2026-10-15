@@ -61,6 +61,34 @@ namespace RXCapture
             return b;
         }
 
+        /// <summary>A recording in the library's working format: <c>name.avi</c> (a picture, 15 fps) and, with sound, <c>name.wav</c> (a 440 Hz tone for the
+        /// first second, silence after) in the recorder's WAV format. Returns the AVI path.</summary>
+        internal static string MakeWorkingCopy(string dir, string name, int seconds, bool withWav)
+        {
+            string avi = Path.Combine(dir, name + ".avi");
+            byte[] jpg;
+            using (var b = new Bitmap(320, 180))
+            {
+                using (var g = Graphics.FromImage(b)) g.Clear(Color.SteelBlue);
+                using (var ms = new MemoryStream()) { b.Save(ms, System.Drawing.Imaging.ImageFormat.Jpeg); jpg = ms.ToArray(); }
+            }
+            using (var w = new AviWriter(avi, 320, 180, 15)) for (int i = 0; i < 15 * seconds; i++) w.AddFrame(jpg);
+            if (withWav)
+                using (var fs = File.Create(Path.ChangeExtension(avi, ".wav")))
+                {
+                    fs.Write(new byte[AudioRecorder.WavHeader], 0, AudioRecorder.WavHeader);
+                    var pcm = new byte[AudioRecorder.Rate * 4 * seconds];
+                    for (int i = 0; i < AudioRecorder.Rate * seconds; i++)
+                    {
+                        short v = i < AudioRecorder.Rate ? (short)(Math.Sin(2 * Math.PI * 440 * i / AudioRecorder.Rate) * 5000) : (short)0;
+                        pcm[i * 4] = pcm[i * 4 + 2] = (byte)(v & 0xff);
+                        pcm[i * 4 + 1] = pcm[i * 4 + 3] = (byte)((v >> 8) & 0xff);
+                    }
+                    fs.Write(pcm, 0, pcm.Length);
+                }
+            return avi;
+        }
+
         public static int Run(string logPath)
         {
             string tmp = Path.Combine(Path.GetTempPath(), "rxcapture_selftest");
@@ -77,6 +105,42 @@ namespace RXCapture
             });
 
             Check("virtual screen reported", delegate { var v = ScreenGrabber.VirtualScreen; log.AppendLine("  virtual screen = " + v + "  primary = " + Screen.PrimaryScreen.Bounds); return v.Width > 0 ? null : "empty"; });
+
+            Check("fit: a picture smaller than the view is enlarged to fill it (capped), a big one is reduced, a plain fit never enlarges", delegate
+            {
+                using (var host = new Form { ClientSize = new Size(1000, 700), StartPosition = FormStartPosition.Manual })
+                {
+                    var cv = new CanvasControl { Dock = DockStyle.Fill };
+                    host.Controls.Add(cv); var hh = host.Handle;
+                    int m = cv.CanvasMargin;
+                    float fitW = (cv.ClientSize.Width - 2 * m) / 800f, fitH = (cv.ClientSize.Height - 2 * m) / 500f, want = Math.Min(fitW, fitH);
+                    using (var small = new Bitmap(800, 500)) cv.SetDocument(new Document(small));
+                    if (Math.Abs(cv.Zoom - 1f) > 0.001f) return "plain fit of a smaller picture should stay at 100 %, is " + cv.Zoom;
+                    cv.ZoomFit(true, 2f);
+                    if (want > 1.02f && Math.Abs(cv.Zoom - Math.Min(2f, want)) > 0.01f) return "paste fit: zoom " + cv.Zoom + ", wanted " + Math.Min(2f, want);
+                    using (var tiny = new Bitmap(100, 60)) cv.SetDocument(new Document(tiny));
+                    cv.ZoomFit(true, 2f);
+                    if (Math.Abs(cv.Zoom - 2f) > 0.001f) return "a tiny picture must stop at 200 %, is " + cv.Zoom;
+                    host.ClientSize = new Size(1200, 800);                            // the fit follows the window and keeps the cap
+                    Application.DoEvents();
+                    if (cv.Zoom > 2.001f) return "after resizing the cap is lost: " + cv.Zoom;
+                    using (var big = new Bitmap(4000, 2500)) cv.SetDocument(new Document(big));
+                    cv.ZoomFit(true, 2f);
+                    if (cv.Zoom >= 1f) return "a big picture should be reduced, zoom " + cv.Zoom;
+                    log.AppendLine("  fit zoom: 800x500 in 1000x700 view -> " + want.ToString("0.00"));
+                }
+                return null;
+            });
+
+            Check("version: compiled into the exe, shown in the window titles", delegate
+            {
+                string v = App.Version;
+                log.AppendLine("  version = " + v + "  title = " + App.Title);
+                if (!System.Text.RegularExpressions.Regex.IsMatch(v, @"^\d+\.\d+\.\d+$")) return "no version in the exe: '" + v + "'";
+                if (App.Title != "RXCapture " + v) return "title is '" + App.Title + "'";
+                using (var m = new MainForm()) if (m.Text != App.Title) return "main window title is '" + m.Text + "'";
+                return null;
+            });
 
             Check("effects (blur/pixelate/adjust/border/shadow/edge/watermark/fill)", delegate
             {
@@ -389,6 +453,36 @@ namespace RXCapture
                 if (part[2] < 0.05) return "trimmed: the tone half is silent (rms " + part[2].ToString("0.000") + ")";
                 if (part[7] > 0.02) return "trimmed: the silent half has sound (rms " + part[7].ToString("0.000") + ")";
                 log.AppendLine("  sound: full " + full.Length / 10.0 + " s, trimmed " + part.Length / 10.0 + " s");
+                return null;
+            });
+
+            Check("working copy sound: an AVI with a sibling WAV opens as PCM and seeks, a plain AVI has none, an MP4 still uses its AAC track", delegate
+            {
+                string avi = MakeWorkingCopy(tmp, "wc", 2, true), wav = Path.ChangeExtension(avi, ".wav");
+                using (var r = Mp4Writer.OpenAudio(avi))
+                {
+                    if (r == null) return "no sound found next to the AVI";
+                    if (r.Rate != AudioRecorder.Rate || r.Channels != AudioRecorder.Channels) return "format " + r.Rate + " Hz, " + r.Channels + " ch";
+                    byte[] pcm; long t; long frames = 0;
+                    while (r.Next(out pcm, out t)) frames += pcm.Length / r.BlockAlign;
+                    double sec = frames / (double)r.Rate;
+                    if (Math.Abs(sec - 2.0) > 0.1) return "the WAV gave " + sec.ToString("0.00") + " s, expected 2 s";
+                    r.Seek(TimeSpan.FromSeconds(1));
+                    if (!r.Next(out pcm, out t)) return "nothing after seeking to 1 s";
+                    if (t < TimeSpan.FromSeconds(0.9).Ticks || t > TimeSpan.FromSeconds(1.1).Ticks) return "after Seek(1 s) the first chunk starts at " + t / 10000000.0 + " s";
+                }
+                string mp4 = Path.Combine(tmp, "wc.mp4");
+                if (!Mp4Writer.Convert(avi, mp4, 15, wav)) return "MP4 with sound failed (AAC encoder unavailable?)";
+                using (var m = Mp4Writer.OpenAudio(mp4)) if (m == null) return "an MP4 lost its AAC track";
+                File.Delete(wav);
+                using (var none = Mp4Writer.OpenAudio(avi)) if (none != null) return "an AVI without a WAV reports sound";
+                string avi2 = MakeWorkingCopy(tmp, "wc2", 1, true);                // the player must accept the working copy too (AudioReader alone reads no AVI sound)
+                using (var pl = AudioPlayer.TryOpen(avi2))
+                {
+                    if (pl == null) { string why = "the audio player does not open an AVI with a WAV"; return why; }
+                }
+                File.Delete(Path.ChangeExtension(avi2, ".wav"));
+                if (AudioPlayer.TryOpen(avi2) != null) return "the audio player opens an AVI with no WAV";
                 return null;
             });
 
@@ -1246,6 +1340,169 @@ namespace RXCapture
                     LibraryStore.Delete(it);
                     if (LibraryStore.List().Exists(x => x.Id == it.Id)) return "delete failed";
                 }
+                return null;
+            });
+
+            Check("library: a working copy keeps its sound file, is listed once, an orphan WAV is no item, and everything goes away on delete", delegate
+            {
+                string dir = Path.Combine(tmp, "wc3"); Directory.CreateDirectory(dir);
+                string avi = MakeWorkingCopy(dir, "rec", 2, true), wav = Path.ChangeExtension(avi, ".wav");
+                string orphan = Path.Combine(LibraryStore.Dir, "19990101-000000-000.wav");
+                LibItem it = null, it2 = null;
+                using (var frame = new Bitmap(320, 180))
+                    try
+                    {
+                        it = LibraryStore.AddVideo(avi, frame, 2, wav);
+                        if (it == null || it.Ext != "avi" || !it.File.EndsWith(it.Id + ".avi")) return "the item is not an AVI working copy: " + (it == null ? "null" : it.File);
+                        if (File.Exists(avi) || File.Exists(wav)) return "the recorder's files were not moved into the library";
+                        string snd = LibraryStore.SoundFile(it);
+                        if (snd == null || !File.Exists(snd) || !snd.EndsWith(it.Id + ".wav")) return "the sound file is not kept next to the AVI";
+                        int n = 0; foreach (var x in LibraryStore.List()) if (x.Id == it.Id) { n++; if (!x.IsVideo || x.Ext != "avi") return "listed as " + x.Ext; }
+                        if (n != 1) return "the working copy is listed " + n + " times";
+                        File.WriteAllBytes(orphan, new byte[100]);
+                        if (LibraryStore.List().Exists(x => x.Id == "19990101-000000-000")) return "an orphan WAV is listed as an item";
+                        System.Threading.Thread.Sleep(5);
+                        it2 = LibraryStore.AddVideo(MakeWorkingCopy(dir, "rec2", 1, false), frame, 1);
+                        if (LibraryStore.SoundFile(it2) != null) return "a silent recording reports a sound file";
+                        string mp4 = Path.Combine(LibraryStore.Dir, it.Id + ".mp4"); File.WriteAllBytes(mp4, new byte[] { 1, 2, 3 });
+                        LibraryStore.ReplaceVideoFile(it, mp4);
+                        if (it.Ext != "mp4" || it.File != mp4) return "ReplaceVideoFile did not switch the item to the MP4";
+                        if (File.Exists(Path.Combine(LibraryStore.Dir, it.Id + ".avi")) || File.Exists(Path.Combine(LibraryStore.Dir, it.Id + ".wav"))) return "the AVI / WAV were not removed";
+                        LibraryStore.Delete(it2);
+                        if (Directory.GetFiles(LibraryStore.Dir, it2.Id + ".*").Length > 0) return "delete left files of the working copy behind";
+                        return null;
+                    }
+                    finally
+                    {
+                        try { File.Delete(orphan); } catch { }
+                        if (it != null) LibraryStore.Delete(it);
+                        if (it2 != null) LibraryStore.Delete(it2);
+                    }
+            });
+
+            Check("save a working copy: MP4 with sound, the AVI and WAV are removed, the item now plays from the MP4; without sound or with the WAV lost it still works", delegate
+            {
+                string dir = Path.Combine(tmp, "wc4"); Directory.CreateDirectory(dir);
+                var made = new System.Collections.Generic.List<LibItem>();
+                using (var frame = new Bitmap(320, 180))
+                    try
+                    {
+                        Func<string, bool, LibItem> add = delegate(string name, bool wav)
+                        {
+                            System.Threading.Thread.Sleep(5);
+                            string a = MakeWorkingCopy(dir, name, 2, wav);
+                            var li = LibraryStore.AddVideo(a, frame, 2, wav ? Path.ChangeExtension(a, ".wav") : null); made.Add(li); return li;
+                        };
+                        // 1. with sound
+                        var it = add("a", true); string dest = Path.Combine(dir, "out a.mp4"); bool dropped;
+                        if (!VideoExport.SaveWorkingCopy(it, dest, "mp4", out dropped)) return "saving a recording with sound failed (AAC / H.264 encoder unavailable?)";
+                        if (dropped) return "the sound was dropped";
+                        using (var rd = new Mp4Writer.Reader(dest)) if (Math.Abs(rd.Duration.TotalSeconds - 2.0) > 0.15) return "the MP4 lasts " + rd.Duration.TotalSeconds.ToString("0.00") + " s, expected 2 s";
+                        using (var au = Mp4Writer.OpenAudio(dest)) if (au == null) return "the MP4 has no sound track";
+                        if (it.Ext != "mp4" || !it.File.EndsWith(it.Id + ".mp4") || !File.Exists(it.File)) return "the item is not an MP4 item afterwards: " + it.File;
+                        if (it.ExportPath != dest) return "the saved file is not the item's main file";
+                        if (File.Exists(Path.Combine(LibraryStore.Dir, it.Id + ".avi")) || File.Exists(Path.Combine(LibraryStore.Dir, it.Id + ".wav"))) return "the working AVI / WAV were not deleted";
+                        // 2. no sound at all
+                        var silent = add("b", false); string dest2 = Path.Combine(dir, "out b.mp4");
+                        if (!VideoExport.SaveWorkingCopy(silent, dest2, "mp4", out dropped)) return "saving a silent recording failed";
+                        using (var au = Mp4Writer.OpenAudio(dest2)) if (au != null) return "a silent recording got a sound track";
+                        // 3. the WAV was deleted by hand
+                        var lost = add("c", true); File.Delete(LibraryStore.SoundFile(lost)); string dest3 = Path.Combine(dir, "out c.mp4");
+                        if (!VideoExport.SaveWorkingCopy(lost, dest3, "mp4", out dropped)) return "saving a recording whose WAV is gone failed";
+                        if (!File.Exists(dest3)) return "no file written without the WAV";
+                        return null;
+                    }
+                    finally { foreach (var li in made) LibraryStore.Delete(li); }
+            });
+
+            Check("save a working copy: a failed conversion changes nothing, a GIF export keeps the AVI", delegate
+            {
+                string dir = Path.Combine(tmp, "wc5"); Directory.CreateDirectory(dir);
+                var made = new System.Collections.Generic.List<LibItem>();
+                using (var frame = new Bitmap(320, 180))
+                    try
+                    {
+                        // a file that is not a valid AVI
+                        string bad = Path.Combine(dir, "bad.avi"); File.WriteAllBytes(bad, new byte[2000]);
+                        string badWav = Path.Combine(dir, "bad.wav"); File.WriteAllBytes(badWav, new byte[AudioRecorder.WavHeader + 400]);
+                        var b = LibraryStore.AddVideo(bad, frame, 1, badWav); made.Add(b);
+                        string dest = Path.Combine(dir, "never.mp4"); bool dropped;
+                        if (VideoExport.SaveWorkingCopy(b, dest, "mp4", out dropped)) return "a broken AVI was reported as saved";
+                        if (File.Exists(dest)) return "a half-written file was left at the destination";
+                        if (b.Ext != "avi" || !File.Exists(b.File) || LibraryStore.SoundFile(b) == null) return "the item was changed by a failed save";
+                        if (File.Exists(Path.Combine(LibraryStore.Dir, b.Id + ".mp4"))) return "a half-written MP4 stayed in the library";
+                        // GIF
+                        System.Threading.Thread.Sleep(5);
+                        string a = MakeWorkingCopy(dir, "g", 2, false);
+                        var g = LibraryStore.AddVideo(a, frame, 2); made.Add(g);
+                        string gif = Path.Combine(dir, "out.gif");
+                        if (!VideoExport.SaveWorkingCopy(g, gif, "gif", out dropped)) return "GIF export failed";
+                        using (var im = Image.FromFile(gif)) if (im.GetFrameCount(System.Drawing.Imaging.FrameDimension.Time) < 1) return "the GIF has no frames";
+                        if (g.Ext != "avi" || !File.Exists(g.File)) return "a GIF export must keep the working copy";
+                        if (g.ExportPath != gif) return "the GIF is not remembered as the saved file";
+                        return null;
+                    }
+                    finally { foreach (var li in made) LibraryStore.Delete(li); }
+            });
+
+            Check("editor: saving a recording writes the MP4 and keeps showing the video; a failed save leaves the recording as it was", delegate
+            {
+                string dir = Path.Combine(tmp, "wc6"); Directory.CreateDirectory(dir);
+                var made = new System.Collections.Generic.List<LibItem>();
+                var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance;
+                using (var frame = new Bitmap(320, 180))
+                    try
+                    {
+                        string a = MakeWorkingCopy(dir, "e1", 2, true);
+                        var it = LibraryStore.AddVideo(a, frame, 2, Path.ChangeExtension(a, ".wav")); made.Add(it);
+                        using (var ed = new EditorForm())
+                        {
+                            var h = ed.Handle;
+                            ed.ShowVideo(it);                                           // the player now holds the AVI open
+                            string dest = Path.Combine(dir, "e1 out.mp4");
+                            if (!ed.SaveVideoTo(dest, "mp4")) return "saving the recording failed";
+                            if (!File.Exists(dest) || it.Ext != "mp4") return "no MP4 after saving (item " + it.Ext + ")";
+                            if (File.Exists(Path.Combine(LibraryStore.Dir, it.Id + ".avi"))) return "the AVI is still there (it was open in the player)";
+                            var cur = typeof(EditorForm).GetField("item", flags).GetValue(ed) as LibItem;
+                            var pl = (VideoPlayerPanel)typeof(EditorForm).GetField("player", flags).GetValue(ed);
+                            if (cur == null || cur.Id != it.Id || pl.CurrentPath != it.File || pl.Failed) return "the editor does not keep showing the saved video (item " + (cur == null ? "none" : cur.Id == it.Id ? "same" : "other") + ", player file " + pl.CurrentPath + ", failed " + pl.Failed + ", expected " + it.File + ")";
+                            pl.Stop();
+                            // a failed save
+                            System.Threading.Thread.Sleep(5);
+                            string bad = Path.Combine(dir, "bad.avi"); File.WriteAllBytes(bad, new byte[2000]);
+                            var b = LibraryStore.AddVideo(bad, frame, 1); made.Add(b);
+                            ed.ShowVideo(b);
+                            string dest2 = Path.Combine(dir, "bad out.mp4");
+                            if (ed.SaveVideoTo(dest2, "mp4")) return "a broken recording was reported as saved";
+                            if (File.Exists(dest2) || b.Ext != "avi" || !File.Exists(b.File)) return "a failed save changed something";
+                            ((VideoPlayerPanel)typeof(EditorForm).GetField("player", flags).GetValue(ed)).Stop();
+                        }
+                        return null;
+                    }
+                    finally { foreach (var li in made) LibraryStore.Delete(li); }
+            });
+
+            Check("quick Save of a recording only re-exports to an .mp4 / .gif; an old AVI export name asks for a new file", delegate
+            {
+                string dir = Path.Combine(tmp, "wc7"); Directory.CreateDirectory(dir);
+                Func<string, string> fmt = delegate(string name) { return EditorForm.QuickSaveFormat(new LibItem { IsVideo = true, Ext = "avi", File = Path.Combine(dir, "x.avi"), ExportPath = name == null ? null : Path.Combine(dir, name) }); };
+                if (fmt("a.mp4") != "mp4") return "mp4 export name -> " + fmt("a.mp4");
+                if (fmt("a.GIF") != "gif") return "gif export name -> " + fmt("a.GIF");
+                if (fmt("a.avi") != null) return "an .avi export name must not receive an MP4: " + fmt("a.avi");
+                if (fmt(null) != null) return "no export name must ask for one";
+                if (EditorForm.QuickSaveFormat(new LibItem { IsVideo = true, Ext = "avi", File = Path.Combine(dir, "x.avi"), ExportPath = Path.Combine(dir, "nodir", "a.mp4") }) != null) return "a vanished folder must ask for a new file";
+                if (EditorForm.QuickSaveFormat(new LibItem { IsVideo = true, Ext = "mp4", File = Path.Combine(dir, "x.mp4"), ExportPath = Path.Combine(dir, "a.mp4") }) != null) return "an MP4 item is copied, not re-encoded";
+                return null;
+            });
+
+            Check("trim of a working copy keeps the chosen range and its sound", delegate
+            {
+                string avi = MakeWorkingCopy(tmp, "tw", 3, true), cut = Path.Combine(tmp, "tw-cut.mp4");
+                Bitmap first; TimeSpan kept;
+                if (!Mp4Writer.Trim(avi, cut, TimeSpan.FromSeconds(0.5), TimeSpan.FromSeconds(1.5), out first, out kept)) return "trim of an AVI working copy failed";
+                if (first != null) first.Dispose();
+                if (Math.Abs(kept.TotalSeconds - 1.0) > 0.15) return "kept " + kept.TotalSeconds.ToString("0.00") + " s, expected 1 s";
+                using (var au = Mp4Writer.OpenAudio(cut)) if (au == null) return "the trimmed video lost its sound";
                 return null;
             });
 

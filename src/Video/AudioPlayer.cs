@@ -33,7 +33,7 @@ namespace RXCapture
         /// <summary>Null when the file has no sound or there is no output device.</summary>
         public static AudioPlayer TryOpen(string path)
         {
-            var r = Mp4Writer.AudioReader.TryOpen(path);
+            var r = Mp4Writer.OpenAudio(path);
             if (r == null) return null;
             var p = new AudioPlayer { path = path };
             p.fmt = new WAVEFORMATEX { tag = 1, channels = (ushort)r.Channels, rate = (uint)r.Rate, bits = 16, blockAlign = (ushort)r.BlockAlign, bytesPerSec = (uint)(r.Rate * r.BlockAlign), size = 0 };
@@ -68,7 +68,7 @@ namespace RXCapture
         {
             try
             {
-                using (var rd = Mp4Writer.AudioReader.TryOpen(path))
+                using (var rd = Mp4Writer.OpenAudio(path))
                 {
                     if (rd == null) return;
                     rd.Seek(TimeSpan.FromTicks(from));
@@ -78,7 +78,7 @@ namespace RXCapture
             catch { }          // a sound problem must never take the application down
         }
 
-        void Play(long from, Mp4Writer.AudioReader reader, Token tk)
+        void Play(long from, Mp4Writer.IPcmReader reader, Token tk)
         {
             IntPtr h;
             if (waveOutOpen(out h, WaveMapper, ref fmt, IntPtr.Zero, IntPtr.Zero, 0) != 0) return;

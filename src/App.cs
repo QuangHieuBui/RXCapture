@@ -24,6 +24,18 @@ namespace RXCapture
         static HotkeyWindow hotkeys;
         public static Icon AppIcon;
 
+        /// <summary>"1.0.5": the version compiled into the exe from version.txt; empty when the build carries none.</summary>
+        public static string Version
+        {
+            get
+            {
+                var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+                return v == null || (v.Major == 0 && v.Minor == 0 && v.Build == 0) ? "" : v.Major + "." + v.Minor + "." + v.Build;
+            }
+        }
+        /// <summary>"RXCapture 1.0.5" (just "RXCapture" without a version).</summary>
+        public static string Title { get { return Version.Length == 0 ? "RXCapture" : "RXCapture " + Version; } }
+
         public static EditorForm Editor
         {
             get { if (editor == null || editor.IsDisposed) editor = new EditorForm(); return editor; }
@@ -126,7 +138,7 @@ namespace RXCapture
 
         static void BuildTray()
         {
-            tray = new NotifyIcon { Icon = AppIcon, Text = "RXCapture", Visible = AppSettings.Current.ShowTray };
+            tray = new NotifyIcon { Icon = AppIcon, Text = Title, Visible = AppSettings.Current.ShowTray };
             var m = Theme.Menu();
             m.Items.Add(Theme.Item("Capture window", "camera", (s, e) => ShowMain()));
             m.Items.Add(Theme.Item("Capture widget", "camera", (s, e) => SetWidgetVisible(!WidgetVisible)));

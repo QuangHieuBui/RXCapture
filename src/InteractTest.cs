@@ -814,16 +814,16 @@ namespace RXCapture
                 log.AppendLine((added ? "PASS " : "FAIL ") + "video with sound recorded (library videos " + before + " -> " + vids.Count + ")");
                 if (!added) return 1;
                 var v = vids[0];
-                bool ok = cfg.RecordSystemSound && v.Ext == "mp4";
-                log.AppendLine((ok ? "PASS " : "FAIL ") + "the Speaker button switched the sound on, and a GIF setting became MP4 (" + v.Ext + ")");
+                bool ok = cfg.RecordSystemSound && v.Ext == "avi" && LibraryStore.SoundFile(v) != null;
+                log.AppendLine((ok ? "PASS " : "FAIL ") + "the Speaker button switched the sound on, and the recording is a working copy with its sound file (" + v.Ext + ")");
                 if (!ok) failed++;
                 ok = micDisabledWhileRecording && muteClicked;
                 log.AppendLine((ok ? "PASS " : "FAIL ") + "while recording, a source that was off at the start is greyed out (Mic disabled = " + micDisabledWhileRecording + ")");
                 if (!ok) failed++;
-                using (var ar = Mp4Writer.AudioReader.TryOpen(v.File))
+                using (var ar = Mp4Writer.OpenAudio(v.File))
                 {
                     ok = ar != null;
-                    log.AppendLine((ok ? "PASS " : "FAIL ") + "the MP4 has a sound track");
+                    log.AppendLine((ok ? "PASS " : "FAIL ") + "the working copy has its sound");
                     if (!ok) failed++;
                     else
                     {
@@ -896,37 +896,23 @@ namespace RXCapture
                     if (!focused) failed++;
                     pl.Stop();          // the editor's own player has the file open now; the checks below use a player of their own
                 }
+                // whatever the format setting says, a recording is an AVI working copy until it is saved (MP4 / GIF are made on Save)
                 var fi = new FileInfo(v.File);
-                bool okExt = v.Ext == fmt && fi.Length > (fmt == "avi" ? 5000 : 500);   // a still screen makes tiny GIF/MP4 files (identical frames merge)
-                log.AppendLine((okExt ? "PASS " : "FAIL ") + fmt + " file " + fi.Name + " " + fi.Length + " bytes, duration label " + v.DurationSec + "s");
+                bool okExt = v.Ext == "avi" && fi.Length > 5000;
+                log.AppendLine((okExt ? "PASS " : "FAIL ") + "setting " + fmt + ": working copy " + fi.Name + " " + fi.Length + " bytes, duration label " + v.DurationSec + "s");
                 if (!okExt) failed++;
-                if (fmt == "avi")
                 {
                     int n = 0; foreach (var f in AviReader.Frames(v.File)) n++;
                     bool ok = n >= 20;
                     log.AppendLine((ok ? "PASS " : "FAIL ") + "avi frames = " + n + " (15 fps, ~3 s expected ≥ 30)");
                     if (!ok) failed++;
                 }
-                else if (fmt == "gif")
                 {
-                    using (var im = Image.FromFile(v.File))
-                    {
-                        int n = im.GetFrameCount(FrameDimension.Time);
-                        bool ok = n >= 1;
-                        log.AppendLine((ok ? "PASS " : "FAIL ") + "gif " + im.Width + "x" + im.Height + " frames=" + n);
-                        if (!ok) failed++;
-                    }
+                    bool fast = VideoRecorder.LastFinishMs < 1500;
+                    log.AppendLine((fast ? "PASS " : "FAIL ") + "stop -> in the library and in the editor without converting: " + VideoRecorder.LastFinishMs + " ms");
+                    if (!fast) failed++;
                 }
-                else
-                {
-                    // ISO base media file: 'ftyp' box first and a 'moov' box somewhere; frame size is 640x360 (even)
-                    byte[] head = File.ReadAllBytes(v.File);
-                    string all = System.Text.Encoding.ASCII.GetString(head);
-                    bool ok = head.Length > 12 && all.Substring(4, 4) == "ftyp" && all.Contains("moov") && all.Contains("avc1");
-                    log.AppendLine((ok ? "PASS " : "FAIL ") + "mp4 container has ftyp/moov/avc1 (H.264)");
-                    if (!ok) failed++;
-                }
-                if (fmt != "gif") { failed += PlaybackCheck(v, fmt, log); failed += TrimCheck(v, fmt, log); }
+                failed += PlaybackCheck(v, "avi", log); failed += TrimCheck(v, "avi", log);
                 LibraryStore.Delete(v);
             }
             cfg0.RecordMic = micKeep; cfg0.RecordSystemSound = spkKeep;

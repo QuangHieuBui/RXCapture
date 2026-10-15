@@ -141,7 +141,11 @@ namespace RXCapture
         // ---- in-editor video playback (replaces the canvas while a video is selected)
 
         /// <summary>Shows a video that has just been added to the library (a fresh recording): the tray lists it and the player opens on it.</summary>
-        public void ShowNewVideo(LibItem it) { tray.Reload(); ShowVideo(it); }
+        public void ShowNewVideo(LibItem it)
+        {
+            tray.Reload(); ShowVideo(it);
+            if (it != null && it.Ext == "avi") status.Hint(Loc.T("Recording ready - Save to create the MP4"));      // a working copy: nothing is encoded until it is saved
+        }
 
         public void ShowVideo(LibItem it)
         {
@@ -1110,6 +1114,7 @@ namespace RXCapture
             if (b == null) { MessageBox.Show(this, Loc.T("There is no image on the clipboard."), "RXCapture"); return; }
             Document d; var it = LibraryStore.AddImage(b, out d);
             OpenNew(it, d);
+            canvas.ZoomFit(true, 2f);        // a pasted picture fills the view (it used to stop at 100 %, leaving wide margins), at most 2x
         }
 
         void PasteSmart()
@@ -1145,17 +1150,56 @@ namespace RXCapture
             File.Copy(it.File, dest, true);
         }
 
-        /// <summary>Copies the video that is being shown to a file of the user's choice (same format as the recording).</summary>
+        /// <summary>A recording that has not been saved yet: the library keeps it as an AVI (plus WAV), the MP4 / GIF is made when it is saved.</summary>
+        static bool IsWorkingCopy(LibItem it) { return it != null && it.IsVideo && it.Ext == "avi"; }
+
+        /// <summary>"mp4" / "gif" when Save may write a recording straight to the file it was saved to before; null when it must ask for a file
+        /// (never saved, the folder is gone, or the old name is not an .mp4 / .gif - e.g. an AVI exported by an older version).</summary>
+        internal static string QuickSaveFormat(LibItem v)
+        {
+            if (!IsWorkingCopy(v) || string.IsNullOrEmpty(v.ExportPath)) return null;
+            try { if (!Directory.Exists(Path.GetDirectoryName(v.ExportPath))) return null; } catch { return null; }
+            string ext = Path.GetExtension(v.ExportPath).ToLowerInvariant();
+            if (ext == ".gif") return LibraryStore.SoundFile(v) == null ? "gif" : null;      // sound only fits in an MP4: ask for an .mp4 name
+            return ext == ".mp4" ? "mp4" : null;
+        }
+
+        /// <summary>Encodes the recording that is shown to <paramref name="dest"/> ("mp4" or "gif") and keeps showing it (from the saved MP4 when there is one).
+        /// False when it could not be written: the recording is then exactly as it was.</summary>
+        internal bool SaveVideoTo(string dest, string format)
+        {
+            var it = item;
+            if (!IsWorkingCopy(it)) return false;
+            player.Stop();                                                       // let go of the AVI: it is deleted once the MP4 exists
+            bool ok = false, dropped = false;
+            var worker = new System.Threading.Thread(() => { ok = VideoExport.SaveWorkingCopy(it, dest, format, out dropped); }) { IsBackground = true };
+            using (var wait = new BusyForm(Loc.T(format == "gif" ? "Creating GIF…" : "Saving video…")))
+            {
+                wait.Show(Visible ? this : null); worker.Start();
+                while (!worker.Join(30)) Application.DoEvents();
+            }
+            ShowVideo(it);
+            if (!ok) return false;
+            AppSettings.Current.SaveFolder = Path.GetDirectoryName(dest);
+            UpdateTitle();
+            status.Hint(Loc.T("Saved") + ": " + dest);
+            if (dropped) App.Balloon(Loc.T("The sound could not be added to the video."));
+            return true;
+        }
+
+        /// <summary>Saves the video that is being shown to a file of the user's choice: a recording gets its MP4 (or GIF) made now, an MP4 / GIF is copied.</summary>
         void SaveVideoAs()
         {
             var it = item;
             if (it == null || !File.Exists(it.File)) return;
             var cfg = AppSettings.Current;
-            string ext = (it.Ext ?? "mp4").ToLowerInvariant();
+            bool working = IsWorkingCopy(it), hasSound = LibraryStore.SoundFile(it) != null;
+            string ext = working ? "mp4" : (it.Ext ?? "mp4").ToLowerInvariant();
             string label = ext == "mp4" ? "MP4 video" : ext == "avi" ? "AVI video" : ext == "gif" ? "GIF animation" : ext.ToUpperInvariant() + " video";
             using (var sfd = new SaveFileDialog())
             {
-                sfd.Filter = label + " (*." + ext + ")|*." + ext;
+                sfd.Filter = working ? "MP4 video (*.mp4)|*.mp4|GIF animation (*.gif)|*.gif" : label + " (*." + ext + ")|*." + ext;
+                if (working && cfg.VideoFormat == "gif" && !hasSound) sfd.FilterIndex = 2;          // sound only fits in an MP4
                 sfd.DefaultExt = ext; sfd.AddExtension = true; sfd.OverwritePrompt = true;
                 string cur = it.ExportPath;
                 if (!string.IsNullOrEmpty(cur) && Directory.Exists(Path.GetDirectoryName(cur)))
@@ -1170,6 +1214,13 @@ namespace RXCapture
                     sfd.FileName = Path.GetFileNameWithoutExtension(cfg.NewFileName(ext));
                 }
                 if (sfd.ShowDialog(this) != DialogResult.OK) return;
+                if (working)
+                {
+                    string dest = sfd.FileName, format = string.Equals(Path.GetExtension(dest), ".gif", StringComparison.OrdinalIgnoreCase) && !hasSound ? "gif" : "mp4";
+                    if (format == "mp4" && !string.Equals(Path.GetExtension(dest), ".mp4", StringComparison.OrdinalIgnoreCase)) dest = Path.ChangeExtension(dest, ".mp4");
+                    if (!SaveVideoTo(dest, format)) MessageBox.Show(this, Loc.T("Could not save this video."), "RXCapture", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
                 try
                 {
                     string dest = sfd.FileName;
@@ -1232,7 +1283,12 @@ namespace RXCapture
             if (VideoShown)
             {
                 var v = item;
-                if (!string.IsNullOrEmpty(v.ExportPath) && Directory.Exists(Path.GetDirectoryName(v.ExportPath)))
+                string quick = QuickSaveFormat(v);
+                if (quick != null)
+                {
+                    if (!SaveVideoTo(v.ExportPath, quick)) MessageBox.Show(this, Loc.T("Could not save this video."), "RXCapture", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+                else if (!IsWorkingCopy(v) && !string.IsNullOrEmpty(v.ExportPath) && Directory.Exists(Path.GetDirectoryName(v.ExportPath)))
                 {
                     try { CopyVideoTo(v, v.ExportPath); status.Hint(Loc.T("Saved") + ": " + v.ExportPath); }
                     catch (Exception ex) { MessageBox.Show(this, ex.Message, "RXCapture", MessageBoxButtons.OK, MessageBoxIcon.Error); }

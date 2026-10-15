@@ -6,16 +6,17 @@
 #   certificate you bought). -NoSign skips it.
 #   releases\<version>\ holds the installer, a portable zip, the SHA-256, the public certificate and BUILD.txt. An existing version folder is
 #   never overwritten (bump -Version) unless -Force. -OutDir builds (tests) and -NoRelease do not touch releases\.
-param([string]$Version = '1.0.5', [string]$OutDir, [string]$Thumbprint, [switch]$NoSign, [switch]$NoRelease, [switch]$Force)
+param([string]$Version, [string]$OutDir, [string]$Thumbprint, [switch]$NoSign, [switch]$NoRelease, [switch]$Force)
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
+if (-not $Version) { $Version = (Get-Content "$root\version.txt" | Select-Object -First 1).Trim() }      # version.txt is the one place to bump
 $dist = if ($OutDir) { $OutDir } else { Join-Path $root 'dist' }
 if (-not $dist) { throw 'no output folder' }
 $app = Join-Path $dist 'app'
 if (Test-Path $app) { Remove-Item $app -Recurse -Force }
 New-Item -ItemType Directory -Force $app | Out-Null
 
-& powershell -NoProfile -ExecutionPolicy Bypass -File "$root\build.ps1" -OutDir $app
+& powershell -NoProfile -ExecutionPolicy Bypass -File "$root\build.ps1" -OutDir $app -Version $Version
 if ($LASTEXITCODE -ne 0) { throw 'Building the application failed' }
 Remove-Item "$app\*.pdb" -Force -ErrorAction SilentlyContinue
 

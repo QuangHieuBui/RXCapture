@@ -77,12 +77,14 @@ namespace RXCapture
             Raise();
         }
 
-        public static LibItem AddVideo(string videoFile, Bitmap firstFrame, int seconds)
+        /// <summary>Adds a video. <paramref name="wavFile"/> is the sound of a recording that is still a working copy (AVI): it is kept next to the AVI as <c>id.wav</c>.</summary>
+        public static LibItem AddVideo(string videoFile, Bitmap firstFrame, int seconds, string wavFile = null)
         {
             string id = NewId();
             string ext = Path.GetExtension(videoFile).TrimStart('.').ToLowerInvariant();
             string dest = Path.Combine(Dir, id + "." + ext);
             File.Move(videoFile, dest);
+            if (!string.IsNullOrEmpty(wavFile) && File.Exists(wavFile)) File.Move(wavFile, Path.Combine(Dir, id + ".wav"));
             var item = new LibItem { Id = id, File = dest, ThumbFile = Path.Combine(Dir, id + ".thumb.png"), IsVideo = true, Ext = ext, DurationSec = seconds, Created = DateTime.Now };
             using (var th = MakeThumb(firstFrame, 260, 160)) th.Save(item.ThumbFile, ImageFormat.Png);
             File.WriteAllText(MetaPath(id), "dur=" + seconds);
@@ -134,7 +136,7 @@ namespace RXCapture
                     if (File.Exists(scp)) { it.File = scp; it.Ext = "png"; }
                     else
                     {
-                        var vf = Directory.GetFiles(Dir, id + ".*").FirstOrDefault(f => !f.EndsWith(".thumb.png") && !f.EndsWith(".meta"));
+                        var vf = Directory.GetFiles(Dir, id + ".*").FirstOrDefault(f => !f.EndsWith(".thumb.png") && !f.EndsWith(".meta") && !f.EndsWith(".wav"));
                         if (vf == null) continue;
                         it.File = vf; it.IsVideo = true; it.Ext = Path.GetExtension(vf).TrimStart('.').ToLowerInvariant();
                     }
@@ -222,6 +224,26 @@ namespace RXCapture
             File.WriteAllLines(MetaPath(id), d.Select(kv => kv.Key + "=" + kv.Value).ToArray());
         }
 
+        /// <summary>The sound of a working-copy recording (<c>id.wav</c> next to its AVI), or null when it has none.</summary>
+        public static string SoundFile(LibItem it)
+        {
+            if (it == null || !it.IsVideo || it.Ext != "avi") return null;
+            string wav = Path.ChangeExtension(it.File, ".wav");
+            return File.Exists(wav) ? wav : null;
+        }
+
+        /// <summary>Makes <paramref name="newFile"/> (already in the library folder, e.g. <c>id.mp4</c>) the item's video and deletes the previous video file and the
+        /// working copy's sound: what is left of the recording once it has been saved as MP4.</summary>
+        public static void ReplaceVideoFile(LibItem it, string newFile)
+        {
+            if (it == null || string.IsNullOrEmpty(newFile) || !File.Exists(newFile)) return;
+            string old = it.File, wav = Path.ChangeExtension(it.File, ".wav");
+            it.File = newFile; it.Ext = Path.GetExtension(newFile).TrimStart('.').ToLowerInvariant();
+            if (!string.Equals(Path.GetFullPath(old), Path.GetFullPath(newFile), StringComparison.OrdinalIgnoreCase)) try { File.Delete(old); } catch { }
+            if (!string.Equals(Path.GetExtension(wav), Path.GetExtension(newFile), StringComparison.OrdinalIgnoreCase)) try { File.Delete(wav); } catch { }
+            Raise();
+        }
+
         /// <summary>Makes <paramref name="path"/> the main file of this item: Save writes there again, and the item is found again when that file is opened.</summary>
         public static void SetExport(LibItem it, string path)
         {
@@ -288,7 +310,7 @@ namespace RXCapture
             {
                 foreach (var f in Directory.GetFiles(Dir, id + ".*"))
                 {
-                    bool main = !f.EndsWith(".thumb.png") && !f.EndsWith(".meta");       // only the main file is worth restoring; thumbnail and notes are rebuilt
+                    bool main = !f.EndsWith(".thumb.png") && !f.EndsWith(".meta") && !f.EndsWith(".wav");       // only the main file is worth restoring; thumbnail, notes and a working copy's sound are not
                     if (recycle && main)
                     {
                         try { Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(f, Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin); continue; }

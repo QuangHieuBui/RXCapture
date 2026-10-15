@@ -92,7 +92,14 @@ RXCapture.exe --grab x,y,w,h out.png  # chụp một vùng, không giao diện
 Mỗi lần đóng gói lại file cài đặt, thêm một mục ở đầu danh sách này (số phiên bản lấy từ `build-setup.ps1 -Version`).
 
 ### 1.0.5
+**Mới**
+- Quay video giống Snagit: bấm dừng là video mở ngay trong Editor và phát liền (khoảng 0,1–0,3 giây), không còn hộp "Converting to MP4…" chặn lại. Bản quay được giữ ở dạng bản làm việc (AVI, kèm WAV nếu có tiếng) trong thư viện; MP4 (hoặc GIF) chỉ được tạo khi bạn bấm **Save / Save As**. Lưu xong, mục này trở thành MP4 trong thư viện và AVI/WAV tạm tự xóa (lưu ra GIF thì giữ bản làm việc). Cắt video và nghe tiếng chạy được ngay trên bản làm việc.
+- Hộp Save As của bản quay có hai kiểu: MP4 và GIF; mục "Output format" trong Settings giờ chỉ chọn kiểu mặc định ở hộp này (video có tiếng luôn lưu thành MP4).
+- Hiển thị số phiên bản: tiêu đề cửa sổ chính, tooltip khay hệ thống và hộp Settings (số lấy từ `version.txt`, được nhúng vào exe khi build).
+- Biểu tượng ứng dụng mới (logo RX).
+
 **Sửa lỗi**
+- Ảnh dán từ clipboard thành ảnh mới giờ được phóng vừa khung (tối đa 200%) thay vì dừng ở 100% và chừa lề lớn.
 - Ảnh vỡ / răng cưa khi phóng to trong Editor: từ 100% đến dưới 800% ảnh được phóng bằng bộ lọc Lanczos (trước đây từ 400% trở lên hiện thành ô vuông, trong khi Snipping Tool vẫn làm mượt); chỉ từ 800% mới hiện từng điểm ảnh để chỉnh chi tiết. Vùng đang xem được tính một lần và giữ lại nên cuộn ảnh không bị giật.
 - Ảnh thu nhỏ (thumbnail) trong thư viện bị răng cưa do bị GDI+ co hai lần: giờ dùng Lanczos khi tạo và khi vẽ đúng kích thước ô.
 

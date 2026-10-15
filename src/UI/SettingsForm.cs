@@ -38,7 +38,7 @@ namespace RXCapture
 
         public SettingsForm()
         {
-            Text = Loc.T("Settings");
+            Text = Loc.T("Settings") + " - " + App.Title;
             ClientSize = new Size(640, 470);
             nav.SetBounds(12, 12, 150, 400);
             nav.BorderStyle = BorderStyle.None; nav.IntegralHeight = false; nav.ItemHeight = 28; nav.DrawMode = DrawMode.OwnerDrawFixed;

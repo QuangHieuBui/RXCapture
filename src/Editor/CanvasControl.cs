@@ -304,14 +304,17 @@ namespace RXCapture
             if (ZoomChanged != null) ZoomChanged(this, EventArgs.Empty);
         }
 
-        public void ZoomFit(bool allowUpscale)
+        float autoFitMax = 16f;
+
+        /// <summary>Fits the whole picture in the view. With allowUpscale a small picture is enlarged too, up to maxZoom (1 = never beyond 100 %).</summary>
+        public void ZoomFit(bool allowUpscale, float maxZoom = 16f)
         {
             if (Doc == null) return;
             int m = CanvasMargin;
             float aw = Math.Max(50, ClientSize.Width - 2 * m), ah = Math.Max(50, ClientSize.Height - 2 * m);
             float z = Math.Min(aw / Doc.Width, ah / Doc.Height);
-            autoFit = true; autoFitUp = allowUpscale;
-            if (!allowUpscale) z = Math.Min(1f, z);
+            autoFit = true; autoFitUp = allowUpscale; autoFitMax = maxZoom;
+            if (!allowUpscale) z = Math.Min(1f, z); else z = Math.Min(maxZoom, z);
             Zoom = Math.Max(0.05f, z);
             UpdateScroll();
             AutoScrollPosition = new Point(0, 0);
@@ -335,7 +338,7 @@ namespace RXCapture
         {
             base.OnResize(e);
             if (editBox != null) LayoutEditBox();
-            if (autoFit && Doc != null && ClientSize.Width > 60 && ClientSize.Height > 60) ZoomFit(autoFitUp);
+            if (autoFit && Doc != null && ClientSize.Width > 60 && ClientSize.Height > 60) ZoomFit(autoFitUp, autoFitMax);
         }
 
         // ------------------------------------------------------------------ painting

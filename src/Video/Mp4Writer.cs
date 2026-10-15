@@ -57,7 +57,7 @@ namespace RXCapture
         {
             fps = Math.Max(1, fps);
             bool started = false, ok = false;
-            WavSource wavSource = null;
+            WavReader wavSource = null;
             try
             {
                 if (MFStartup(MfVersion, 0) != 0) return false;
@@ -66,7 +66,7 @@ namespace RXCapture
                 AudioFeed feed = null;
                 int frameNo = 0, w = 0, h = 0;
                 long duration = 10000000L / fps;
-                if (wav != null && File.Exists(wav)) wavSource = new WavSource(wav);
+                if (wav != null && File.Exists(wav)) wavSource = new WavReader(wav);
                 // JPEG decoding is the slow part (about 70% of the time): several frames are decoded at once on the other cores while the
                 // encoder works on the previous batch, so the two overlap instead of following each other
                 var jpgs = AviReader.Frames(avi).GetEnumerator();
@@ -180,11 +180,42 @@ namespace RXCapture
         /// <summary>PCM to be written as the audio track: chunks of 16-bit samples with their start time (100 ns).</summary>
         public interface IAudioSource { bool Next(out byte[] pcm, out long time); }
 
+        /// <summary>Decoded sound that can be played or trimmed: 16-bit PCM chunks, seekable. An MP4's AAC track (<see cref="AudioReader"/>) and the
+        /// recorder's WAV (<see cref="WavReader"/>) both come as this.</summary>
+        public interface IPcmReader : IAudioSource, IDisposable
+        {
+            int Rate { get; }
+            int Channels { get; }
+            int BlockAlign { get; }
+            void Seek(TimeSpan t);
+        }
+
+        /// <summary>The sound of a file: the WAV next to a working-copy AVI (<c>name.wav</c>), or the AAC track of any other file. Null when there is none.</summary>
+        public static IPcmReader OpenAudio(string path)
+        {
+            if (string.Equals(Path.GetExtension(path), ".avi", StringComparison.OrdinalIgnoreCase))
+            {
+                string wav = Path.ChangeExtension(path, ".wav");
+                try { return File.Exists(wav) ? new WavReader(wav) : null; } catch { return null; }
+            }
+            return AudioReader.TryOpen(path);
+        }
+
         /// <summary>The WAV written by <see cref="AudioRecorder"/> (44-byte header, then PCM), handed out in 100 ms chunks.</summary>
-        sealed class WavSource : IAudioSource, IDisposable
+        public sealed class WavReader : IPcmReader
         {
             FileStream fs; long frames;
-            public WavSource(string path) { fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite); fs.Seek(AudioRecorder.WavHeader, SeekOrigin.Begin); }
+            public int Rate { get { return AudioRecorder.Rate; } }
+            public int Channels { get { return AudioRecorder.Channels; } }
+            public int BlockAlign { get { return AudioRecorder.Channels * 2; } }
+            public WavReader(string path) { fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite); fs.Seek(AudioRecorder.WavHeader, SeekOrigin.Begin); }
+            public void Seek(TimeSpan t)
+            {
+                long f = Math.Max(0, t.Ticks) * AudioRecorder.Rate / 10000000L;
+                long pos = AudioRecorder.WavHeader + f * BlockAlign;
+                fs.Seek(Math.Min(pos, Math.Max(AudioRecorder.WavHeader, fs.Length)), SeekOrigin.Begin);
+                frames = f;
+            }
             public bool Next(out byte[] pcm, out long time)
             {
                 int align = AudioRecorder.Channels * 2, want = AudioRecorder.Rate / 10 * align;
@@ -246,7 +277,7 @@ namespace RXCapture
         const int FirstAudioStream = -3;
 
         /// <summary>Decodes the sound of an MP4 to 16-bit PCM (for trimming and for playback). <see cref="TryOpen"/> gives null for a file without sound.</summary>
-        public sealed class AudioReader : IDisposable, IAudioSource
+        public sealed class AudioReader : IPcmReader
         {
             IMFSourceReader reader; bool started;
             public int Rate { get; private set; }
@@ -327,8 +358,8 @@ namespace RXCapture
         /// <summary>The part [start, end) of a file's sound, moved to start at 0 - what a trim keeps.</summary>
         sealed class TrimmedAudio : IAudioSource
         {
-            readonly AudioReader src; readonly long start, end;
-            public TrimmedAudio(AudioReader src, TimeSpan start, TimeSpan end) { this.src = src; this.start = start.Ticks; this.end = end.Ticks; src.Seek(start); }
+            readonly IPcmReader src; readonly long start, end;
+            public TrimmedAudio(IPcmReader src, TimeSpan start, TimeSpan end) { this.src = src; this.start = start.Ticks; this.end = end.Ticks; src.Seek(start); }
             public bool Next(out byte[] pcm, out long time)
             {
                 while (src.Next(out pcm, out time))
@@ -364,7 +395,7 @@ namespace RXCapture
         {
             first = null; kept = TimeSpan.Zero;
             bool started = false, ok = false;
-            AudioReader audio = null;
+            IPcmReader audio = null;
             try
             {
                 if (MFStartup(MfVersion, 0) != 0) return false;
@@ -375,7 +406,7 @@ namespace RXCapture
                     int w = rd.Width, h = rd.Height, fps = rd.Fps;
                     long frameDur = 10000000L / fps, s100 = start.Ticks, e100 = end.Ticks;
                     var row = new byte[w * 4];
-                    audio = AudioReader.TryOpen(src);                       // null when the video has no sound
+                    audio = OpenAudio(src);                                 // null when the video has no sound
                     int audioStream;
                     var writer = Open(dst, w, h, fps, audio != null ? audio.Rate : 0, audio != null ? audio.Channels : 0, out audioStream);
                     AudioFeed feed = audio == null ? null : new AudioFeed(new TrimmedAudio(audio, start, end), writer, audioStream, audio.Rate, audio.BlockAlign);

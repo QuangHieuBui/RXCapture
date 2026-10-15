@@ -91,7 +91,7 @@ namespace RXCapture
 
         public MainForm()
         {
-            Text = "RXCapture";
+            Text = App.Title;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MinimizeBox = true; ShowInTaskbar = true;
             StartPosition = FormStartPosition.CenterScreen;
