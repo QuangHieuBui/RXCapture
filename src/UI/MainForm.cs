@@ -225,7 +225,7 @@ namespace RXCapture
                 int di = Array.IndexOf(Delays, cfg.DelaySeconds); cbDelay.SelectedIndex = di < 0 ? 0 : di;
                 cbShare.SelectedIndex = ShareIndex();
                 cbFormat.SelectedIndex = cfg.VideoFormat == "gif" ? 1 : (cfg.VideoFormat == "mp4" ? 2 : 0);
-                cbFps.SelectedItem = cfg.VideoFps.ToString(); if (cbFps.SelectedIndex < 0) cbFps.SelectedIndex = cbFps.Items.IndexOf("24");
+                cbFps.SelectedItem = cfg.VideoFps.ToString(); if (cbFps.SelectedIndex < 0) cbFps.SelectedIndex = cbFps.Items.IndexOf("30");
                 RefreshPresetList();
                 UpdateImageOptions();
             }

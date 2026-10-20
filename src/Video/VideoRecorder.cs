@@ -186,7 +186,7 @@ namespace RXCapture
         }
     }
 
-    /// <summary>Rounded, anti-aliased button of the recorder bar: fill colour = BackColor, lighter under the mouse, darker when pressed.
+    /// <summary>Flat, square, icon-only segment of the recorder bar: fill colour = BackColor, lighter under the mouse, darker when pressed.
     /// <see cref="Level"/> (0..1) draws a thin level meter along the bottom edge; -1 hides it.</summary>
     class BarButton : Button
     {
@@ -222,12 +222,7 @@ namespace RXCapture
             if (!Enabled) fill = Mix(fill, back, 0.55f);
             else if (down) fill = Mix(fill, Color.Black, 0.18f);
             else if (hot) fill = Mix(fill, Color.White, 0.16f);
-            var r = new RectangleF(0.5f, 0.5f, Width - 2, Height - 2);
-            using (var p = Theme.RoundRect(Rectangle.Round(r), 10))
-            {
-                using (var b = new SolidBrush(fill)) g.FillPath(b, p);
-                using (var pen = new Pen(Color.FromArgb(hot && Enabled ? 70 : 34, 255, 255, 255))) g.DrawPath(pen, p);      // fine light edge
-            }
+            using (var b = new SolidBrush(fill)) g.FillRectangle(b, 0, 0, Width, Height);          // flat, square segment (Snagit style): the bar's background shows as the 1 px divider
 
             string text = Text ?? "";
             Size ts = TextRenderer.MeasureText(g, text, Font, new Size(1000, 100), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
@@ -248,7 +243,7 @@ namespace RXCapture
 
             if (Level >= 0)
             {
-                var track = new RectangleF(14, Height - 8, Width - 28, 3);
+                var track = new RectangleF(8, Height - 5, Width - 16, 2);
                 using (var b = new SolidBrush(Color.FromArgb(70, 255, 255, 255))) g.FillRectangle(b, track);
                 float w = Math.Max(0, Math.Min(1f, (float)Math.Sqrt(Level))) * track.Width;                  // sqrt: quiet sounds still show
                 if (w > 0) using (var b = new SolidBrush(Level > 0.85f ? Color.FromArgb(255, 190, 60) : Color.FromArgb(96, 214, 120))) g.FillRectangle(b, track.X, track.Y, w, track.Height);
@@ -298,6 +293,7 @@ namespace RXCapture
         AudioRecorder audio;
         string wavPath;
         readonly TimeBadge lblTime = new TimeBadge();
+        readonly ToolTip tips = new ToolTip();
         float micShown, spkShown;                 // smoothed input levels for the meters on the Mic / Speaker buttons
         readonly Timer ui = new Timer { Interval = 100 };
         readonly Stopwatch sw = new Stopwatch();
@@ -319,17 +315,17 @@ namespace RXCapture
             BackColor = BarBack;
             Font = new Font("Segoe UI", 9.5f);
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
-            Size = new Size(806, 56);
-            using (var rp = Theme.RoundRect(new Rectangle(0, 0, Width, Height), 14)) Region = new Region(rp);      // rounded corners
+            Size = new Size(456, 56);
 
-            // record group | separator | sound group | clock
-            btnRec.SetBounds(8, 8, 116, 40); btnStop.SetBounds(128, 8, 150, 40); btnCancel.SetBounds(282, 8, 114, 40);
-            btnMic.SetBounds(412, 8, 90, 40); btnSpk.SetBounds(506, 8, 120, 40);
-            Setup(btnRec, "record", Loc.T("Record"), Loc.T("Record / Pause"), Color.FromArgb(196, 46, 46));
-            Setup(btnStop, "stop", Loc.T("Stop & save"), Loc.T("Stop and save"), Color.FromArgb(58, 58, 64));
-            Setup(btnCancel, "close", Loc.T("Discard"), Loc.T("Discard"), Color.FromArgb(58, 58, 64));
-            Setup(btnMic, "mic", Loc.T("Mic"), Loc.T("Record the microphone (before you press Record)"), Color.FromArgb(58, 58, 64));
-            Setup(btnSpk, "speaker", Loc.T("Speaker"), Loc.T("Record the computer sound (before you press Record)"), Color.FromArgb(58, 58, 64));
+            // Snagit-style bar of square icon segments: Record/Pause | Stop & save | Speaker over Mic | clock | Discard (the 1 px gaps are the dividers)
+            btnRec.SetBounds(0, 0, 71, 56); btnStop.SetBounds(72, 0, 71, 56);
+            btnSpk.SetBounds(144, 0, 83, 27); btnMic.SetBounds(144, 28, 83, 28);
+            btnCancel.SetBounds(385, 0, 71, 56);
+            Setup(btnRec, "record", Loc.T("Record"), Loc.T("Record / Pause"), RecRed);
+            Setup(btnStop, "stop", Loc.T("Stop & save"), Loc.T("Stop and save"), StopBlue);
+            Setup(btnCancel, "close", Loc.T("Discard"), Loc.T("Discard"), Neutral);
+            Setup(btnMic, "mic", Loc.T("Mic"), Loc.T("Record the microphone (before you press Record)"), Neutral);
+            Setup(btnSpk, "speaker", Loc.T("Speaker"), Loc.T("Record the computer sound (before you press Record)"), Neutral);
             btnMic.Click += (s, e) => { if (started) { if (audio != null && audio.MicOk) audio.MicMuted = !audio.MicMuted; } else { cfg.RecordMic = !cfg.RecordMic; cfg.Save(); } ShowToggles(); };
             btnSpk.Click += (s, e) => { if (started) { if (audio != null && audio.SystemOk) audio.SystemMuted = !audio.SystemMuted; } else { cfg.RecordSystemSound = !cfg.RecordSystemSound; cfg.Save(); } ShowToggles(); };
             ShowToggles();
@@ -337,7 +333,7 @@ namespace RXCapture
             btnRec.Click += (s, e) => RecClicked();
             btnStop.Click += (s, e) => StopClicked();
             btnCancel.Click += (s, e) => { cancelled = true; StopWorker(); Close(); };
-            lblTime.SetBounds(644, 0, 156, 56); ShowReady();
+            lblTime.SetBounds(228, 0, 156, 56); ShowReady();
             lblTime.MouseDown += (s, e) => { if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); } };   // drag the bar by its label
             lblTime.Cursor = Cursors.SizeAll;
             MouseDown += (s, e) => { if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); } };      // or by any empty part of the bar
@@ -365,22 +361,23 @@ namespace RXCapture
         }
 
         static readonly Font FontReady = new Font("Segoe UI", 10f), FontCount = new Font("Segoe UI Semibold", 20f), FontClock = new Font("Segoe UI Semibold", 15f);
-        static readonly Color BarBack = Color.FromArgb(30, 30, 34), BarLine = Color.FromArgb(74, 74, 82), Neutral = Color.FromArgb(58, 58, 64);
+        static readonly Color BarBack = Color.FromArgb(38, 38, 38), Neutral = Color.FromArgb(58, 58, 58), RecRed = Color.FromArgb(196, 46, 46), StopBlue = Color.FromArgb(0, 103, 184);
 
         void Setup(BarButton b, string icon, string text, string tip, Color fill)
         {
             b.BackColor = fill; b.ForeColor = Color.White;
             b.Font = new Font("Segoe UI Semibold", 10f);
-            b.Image = Icons.Get(icon == "record" ? "record_w" : icon, 22, true); b.Text = Up(text);
+            b.Image = Icons.Get(icon == "record" ? "record_w" : icon, 24, true); b.Text = "";      // icon only: the tooltip names it
             b.Cursor = Cursors.Hand; b.UseMnemonic = false;   // "Stop & save" must not turn & into a shortcut key
-            new ToolTip().SetToolTip(b, tip);
+            tips.SetToolTip(b, tip);
         }
 
         /// <summary>The Record button turns into Pause (grey) while recording and back into Resume (red) when paused.</summary>
         void SetRec(string icon, string text)
         {
-            btnRec.Image = Icons.Get(icon == "record" ? "record_w" : icon, 22, true); btnRec.Text = Up(text);
-            btnRec.BackColor = icon == "pause" ? Neutral : Color.FromArgb(196, 46, 46);
+            btnRec.Image = Icons.Get(icon == "record" ? "record_w" : icon, 24, true);
+            btnRec.BackColor = icon == "pause" ? Neutral : RecRed;
+            tips.SetToolTip(btnRec, text);
         }
 
         void ShowReady()
@@ -397,21 +394,6 @@ namespace RXCapture
             lblTime.Text = countdown.ToString();
         }
 
-        protected override void OnPaint(PaintEventArgs e)
-        {
-            base.OnPaint(e);
-            var g = e.Graphics;
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            using (var p = Theme.RoundRect(new Rectangle(0, 0, Width - 1, Height - 1), 14))
-            using (var pen = new Pen(BarLine)) g.DrawPath(pen, p);
-            using (var pen = new Pen(Color.FromArgb(70, 70, 78)))
-            {
-                g.DrawLine(pen, 404, 12, 404, Height - 13);                    // record group | sound group
-                g.DrawLine(pen, 636, 12, 636, Height - 13);                    // sound group | clock
-            }
-        }
-
-        static string Up(string s) { return s == null ? "" : s.ToUpper(); }        // button captions are upper case
 
         protected override bool ShowWithoutActivation { get { return false; } }
         protected override void WndProc(ref Message m) { if (m.Msg == Native.WM_DPICHANGED) return; base.WndProc(ref m); }
@@ -453,9 +435,8 @@ namespace RXCapture
 
         static void Toggle(BarButton b, string icon, bool on, bool unavailable)
         {
-            b.Image = Icons.Get(on ? icon : icon + "_off", 22, true);
-            b.BackColor = on ? Color.FromArgb(36, 112, 196) : Neutral;
-            b.ForeColor = on ? Color.White : Color.FromArgb(175, 175, 180);
+            b.Image = Icons.Get(on ? icon : icon + "_off", 24, true);      // on / off is the icon itself (struck through when off)
+            b.BackColor = Neutral;
             b.Enabled = !unavailable;
             if (!on || unavailable) b.Level = -1;
         }
@@ -508,6 +489,8 @@ namespace RXCapture
             if (audio != null && audio.SystemOk && !audio.SystemMuted && !paused) { spkShown = Math.Max(audio.SystemLevel, spkShown * 0.7f); btnSpk.Level = spkShown; } else btnSpk.Level = -1;
         }
 
+        internal const long FrameJpegQuality = 95;
+
         void CaptureLoop()
         {
             int fps = Math.Max(5, Math.Min(30, cfg.VideoFps));
@@ -521,7 +504,7 @@ namespace RXCapture
                 using (var g = Graphics.FromImage(bmp))
                 using (var ms = new MemoryStream())
                 {
-                    ep.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 82L);
+                    ep.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, FrameJpegQuality);   // the MP4 is made from these frames, so they must stay clean (text edges)
                     byte[] cached = null;
                     long written = 0;
                     while (!stopFlag)

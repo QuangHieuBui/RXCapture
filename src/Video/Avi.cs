@@ -98,6 +98,62 @@ namespace RXCapture
         public void Dispose() { Close(); }
     }
 
+    /// <summary>Random access to the JPEG frames of an MJPEG AVI written by AviWriter. The player decodes them with GDI+: Media Foundation's
+    /// MJPEG decoder reads the full-range JPEG colours as 16-235 video, which stretched the contrast (20 became 5, 235 became 255).</summary>
+    public sealed class AviIndex : IDisposable
+    {
+        FileStream fs;
+        readonly List<long> pos = new List<long>();
+        readonly List<int> len = new List<int>();
+        public int Fps = 15;
+        public int Count { get { return pos.Count; } }
+
+        public static AviIndex Open(string path)
+        {
+            var ix = new AviIndex();
+            try
+            {
+                ix.fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                var br = new BinaryReader(ix.fs);
+                if (Fcc(br) != "RIFF") throw new InvalidDataException("not an AVI file");
+                br.ReadInt32(); Fcc(br);   // size, 'AVI '
+                while (ix.fs.Position + 8 <= ix.fs.Length)
+                {
+                    string id = Fcc(br); int size = br.ReadInt32();
+                    if (id != "LIST") { ix.fs.Seek(size + (size & 1), SeekOrigin.Current); continue; }
+                    long end = ix.fs.Position + size;
+                    string type = Fcc(br);
+                    if (type == "hdrl" && Fcc(br) == "avih") { br.ReadInt32(); int us = br.ReadInt32(); if (us > 0) ix.Fps = Math.Max(1, (int)Math.Round(1000000.0 / us)); }
+                    if (type == "movi")
+                    {
+                        while (ix.fs.Position + 8 <= end)
+                        {
+                            string cid = Fcc(br); int csize = br.ReadInt32();
+                            if (cid == "00dc" || cid == "00db") { ix.pos.Add(ix.fs.Position); ix.len.Add(csize); }
+                            ix.fs.Seek(csize + (csize & 1), SeekOrigin.Current);
+                        }
+                        break;
+                    }
+                    ix.fs.Seek(end, SeekOrigin.Begin);
+                }
+                if (ix.Count == 0) throw new InvalidDataException("no frames");
+                return ix;
+            }
+            catch { ix.Dispose(); throw; }
+        }
+
+        public byte[] Read(int i)
+        {
+            fs.Seek(pos[i], SeekOrigin.Begin);
+            var b = new byte[len[i]];
+            int got = 0; while (got < b.Length) { int n = fs.Read(b, got, b.Length - got); if (n <= 0) break; got += n; }
+            return b;
+        }
+
+        static string Fcc(BinaryReader br) { return Encoding.ASCII.GetString(br.ReadBytes(4)); }
+        public void Dispose() { if (fs != null) { fs.Dispose(); fs = null; } }
+    }
+
     public static class AviReader
     {
         /// <summary>Enumerates the JPEG frames of an MJPEG AVI produced by AviWriter.</summary>

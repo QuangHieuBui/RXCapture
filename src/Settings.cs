@@ -34,16 +34,16 @@ namespace RXCapture
         public AfterEffect Effect = AfterEffect.None;
 
         public string HkAllInOne = "PrintScreen";
-        public string HkFullScreen = "Ctrl+Shift+F";
-        public string HkWindow = "Ctrl+Shift+W";
-        public string HkRegion = "Ctrl+Shift+R";
-        public string HkScroll = "Ctrl+Shift+S";
-        public string HkFreehand = "Ctrl+Shift+D";
-        public string HkRepeat = "Ctrl+Shift+L";
-        public string HkVideo = "Ctrl+Shift+V";
+        public string HkFullScreen = "";             // only All-in-One has a key out of the box; the others are set by the user
+        public string HkWindow = "";
+        public string HkRegion = "";
+        public string HkScroll = "";
+        public string HkFreehand = "";
+        public string HkRepeat = "";
+        public string HkVideo = "";
 
-        public int VideoFps = 24;                   // 24 fps looks smooth and, with quality-based encoding, costs about the same as 15 fps
-        public int VideoQuality = 1;                // 0 small file, 1 balanced, 2 high quality (see Mp4Writer.Encoder.Quality)
+        public int VideoFps = 30;                   // 30 fps: smooth scrolling and dragging; quality-based encoding keeps the file small
+        public int VideoQuality = 2;                // 0 small file, 1 balanced, 2 high quality (see Mp4Writer.Encoder.Quality)
         public bool VideoCursor = true;
         public bool RecordMic = false;               // sound for video recordings: microphone and/or what the computer plays (speakers); needs MP4
         public bool RecordSystemSound = false;
@@ -94,7 +94,7 @@ namespace RXCapture
 
         public static AppSettings Current
         {
-            get { if (_cur == null) { _cur = Load(); _cur.EnsurePresets(); _cur.MigrateFileName(); _cur.MigrateVideoFormat(); _cur.MigrateVideoFps(); } return _cur; }
+            get { if (_cur == null) { _cur = Load(); _cur.EnsurePresets(); _cur.MigrateFileName(); _cur.MigrateVideoFormat(); _cur.MigrateVideoFps(); _cur.MigrateDefaults(); } return _cur; }
         }
 
         static AppSettings Load()
@@ -130,17 +130,36 @@ namespace RXCapture
 
         void MigrateVideoFps() { if (ApplyVideoFpsMigration()) Save(); }
 
-        /// <summary>The frame rate default went from 15 to 24 fps: files saved with the old default (15) move to the new one, once. Later choices stay.</summary>
+        /// <summary>The frame rate default went from 15 to 24 and then to 30 fps: files saved with an old default (15 or 24) move to the new one, once. Later choices stay.</summary>
         internal bool ApplyVideoFpsMigration()
         {
-            if (SettingsVersion >= 3) return false;
-            if (VideoFps == 15) VideoFps = 24;
-            SettingsVersion = 3;
+            if (SettingsVersion >= 4) return false;
+            if (VideoFps == 15 || VideoFps == 24) VideoFps = 30;
+            SettingsVersion = 4;
             return true;
         }
 
-        /// <summary>The H.264 quality (Mp4Writer.Encoder.Quality) for a setting: small file 45, balanced 55, high 60.</summary>
-        public static int QualityFor(int level) { return level <= 0 ? 45 : (level == 1 ? 55 : 60); }
+        void MigrateDefaults() { if (ApplyDefaultsMigration()) Save(); }
+
+        /// <summary>The hotkeys other than All-in-One are no longer preset, and high video quality is the default: a file saved with the old
+        /// preset keys / balanced quality moves to the new defaults, once. Keys and quality the user chose themselves stay.</summary>
+        internal bool ApplyDefaultsMigration()
+        {
+            if (SettingsVersion >= 5) return false;
+            if (HkFullScreen == "Ctrl+Shift+F") HkFullScreen = "";
+            if (HkWindow == "Ctrl+Shift+W") HkWindow = "";
+            if (HkRegion == "Ctrl+Shift+R") HkRegion = "";
+            if (HkScroll == "Ctrl+Shift+S") HkScroll = "";
+            if (HkFreehand == "Ctrl+Shift+D") HkFreehand = "";
+            if (HkRepeat == "Ctrl+Shift+L") HkRepeat = "";
+            if (HkVideo == "Ctrl+Shift+V") HkVideo = "";
+            if (VideoQuality == 1) VideoQuality = 2;
+            SettingsVersion = 5;
+            return true;
+        }
+
+        /// <summary>The H.264 quality (Mp4Writer.Encoder.Quality) for a setting: small file 75, balanced 90, high 97.</summary>
+        public static int QualityFor(int level) { return level <= 0 ? 75 : (level == 1 ? 90 : 97); }
 
         /// <summary>The in-memory part of the migration (no file access, so it can be tested). True when something changed.</summary>
         internal bool ApplyVideoFormatMigration()

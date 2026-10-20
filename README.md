@@ -25,13 +25,8 @@ Tạo `dist\RXCapture-Setup-<phiên bản>.exe` (~0,6 MB, tự chứa toàn bộ
 | Phím | Chức năng |
 |---|---|
 | Print Screen | All-in-One (chọn cửa sổ / đối tượng / kéo vùng) |
-| Ctrl+Shift+R | Vùng chọn |
-| Ctrl+Shift+W | Cửa sổ |
-| Ctrl+Shift+F | Toàn màn hình |
-| Ctrl+Shift+S | Chụp cuộn trang (Scrolling) |
-| Ctrl+Shift+D | Vẽ tay (Freehand) |
-| Ctrl+Shift+L | Lặp lại vùng vừa chụp |
-| Ctrl+Shift+V | Quay video (bấm lại để dừng) |
+
+Các chế độ khác (Vùng chọn, Cửa sổ, Toàn màn hình, Scrolling, Freehand, Lặp lại vùng vừa chụp, Quay video) mặc định chưa gán phím; đặt phím trong *Settings > Hotkeys*.
 
 Nếu Windows đã giữ Print Screen cho Snipping Tool, hãy tắt tùy chọn đó trong *Settings > Accessibility > Keyboard* hoặc đổi phím trong RXCapture.
 
@@ -90,6 +85,16 @@ RXCapture.exe --grab x,y,w,h out.png  # chụp một vùng, không giao diện
 
 ## Lịch sử phiên bản
 Mỗi lần đóng gói lại file cài đặt, thêm một mục ở đầu danh sách này (số phiên bản lấy từ `build-setup.ps1 -Version`).
+
+### 1.0.6
+**Mới**
+- Chất lượng quay video tốt hơn, tối ưu cho Full HD: khung hình lúc quay dùng JPEG 95 (trước đây 82) nên chữ không còn nhòe viền; chất lượng H.264 khi Save nâng lên (Small / Balanced / High = 75 / 90 / 97); mặc định 30 fps và chất lượng High.
+- Thanh điều khiển quay video làm lại kiểu Snagit: các ô phẳng, vuông, chỉ có icon (Record/Pause, Stop & save, Loa/Mic xếp chồng, đồng hồ, Discard); icon vẽ theo pixel nguyên nên sắc nét, icon Record/Pause/Stop to hơn.
+- Mục Hotkey trong Settings: chỉ All-in-One (Print Screen) có phím sẵn, các chế độ khác để trống để tự gán. Cài đặt cũ còn giữ phím mặc định cũ được xóa một lần; phím bạn tự đặt giữ nguyên.
+
+**Sửa lỗi**
+- Xem lại bản quay trong Editor bị tương phản quá cao (tối đậm hơn, sáng cháy): bộ giải mã MJPEG của Windows hiểu sai dải màu của AVI. Giờ AVI được giải mã bằng GDI+ nên màu đúng như lúc quay; tua vẫn chính xác từng khung.
+- Khung hình video trong Editor được thu nhỏ bằng Lanczos khi dừng / tua (bicubic khi đang phát) nên chữ nét hơn; video đúng 1:1 vẽ từng điểm ảnh.
 
 ### 1.0.5
 **Mới**

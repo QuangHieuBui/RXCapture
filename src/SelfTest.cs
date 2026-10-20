@@ -597,12 +597,12 @@ namespace RXCapture
                 return null;
             });
 
-            Check("video size: the new default (24 fps, quality mode) is far smaller than the old one and still sharp", delegate
+            Check("video quality: the new default (30 fps, clean JPEG frames, quality 90) is as sharp as the old one (15 fps, JPEG 82, constant rate) and smaller; high quality is sharper", delegate
             {
-                const int W = 1280, H = 720;
-                Func<int, bool, string> makeAvi = delegate(int fps, bool moving)
+                const int W = 1920, H = 1080;
+                Func<int, bool, long, string> makeAvi = delegate(int fps, bool moving, long jpegQ)
                 {
-                    string avi = Path.Combine(tmp, "size_" + fps + (moving ? "m" : "s") + ".avi");
+                    string avi = Path.Combine(tmp, "size_" + fps + (moving ? "m" : "s") + jpegQ + ".avi");
                     var codec = VideoRecorder.FindJpeg();
                     using (var w = new AviWriter(avi, W, H, fps))
                     using (var bmp = new Bitmap(W, H, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
@@ -610,7 +610,7 @@ namespace RXCapture
                     using (var ep = new System.Drawing.Imaging.EncoderParameters(1))
                     using (var fnt = new Font("Consolas", 11f))
                     {
-                        ep.Param[0] = new System.Drawing.Imaging.EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 82L);
+                        ep.Param[0] = new System.Drawing.Imaging.EncoderParameter(System.Drawing.Imaging.Encoder.Quality, jpegQ);
                         var rnd = new Random(7);
                         var lines = new string[80]; for (int i = 0; i < lines.Length; i++) lines[i] = "line " + i + "  the quick brown fox jumps over the lazy dog " + rnd.Next(100000, 999999);
                         for (int f = 0; f < fps * 4; f++)
@@ -658,22 +658,21 @@ namespace RXCapture
                 {
                     var rows = new[]
                     {
-                        new { Name = "old default: 15 fps, constant rate 3.75", Fps = 15, Bpp = 3.75, Q = 0, P = 0, G = 0 },
-                        new { Name = "new default: 24 fps, quality 55",          Fps = 24, Bpp = 1.5, Q = 55, P = 0, G = 0 },
-                        new { Name = "small file:  24 fps, quality 45",          Fps = 24, Bpp = 1.5, Q = 45, P = 0, G = 0 },
-                        new { Name = "high:        24 fps, quality 60",          Fps = 24, Bpp = 1.5, Q = 60, P = 0, G = 0 },
-                        new { Name = "smooth:      30 fps, quality 55",          Fps = 30, Bpp = 1.5, Q = 55, P = 0, G = 0 },
+                        new { Name = "old default: 15 fps, JPEG 82, constant rate 3.75", Fps = 15, Bpp = 3.75, Q = 0,  J = 82L },
+                        new { Name = "new default: 30 fps, JPEG 95, quality 90",         Fps = 30, Bpp = 1.5,  Q = 90, J = 95L },
+                        new { Name = "small file:  30 fps, JPEG 95, quality 75",         Fps = 30, Bpp = 1.5,  Q = 75, J = 95L },
+                        new { Name = "high:        30 fps, JPEG 95, quality 97",         Fps = 30, Bpp = 1.5,  Q = 97, J = 95L },
                     };
                     foreach (var moving in new[] { true, false })
                     {
                         log.AppendLine("  content: " + (moving ? "scrolling text + dragged window" : "still page") + ", 4 s, " + W + "x" + H);
                         foreach (var r in rows)
                         {
-                            string avi = makeAvi(r.Fps, moving);
-                            string mp4 = encode(avi, r.Fps, r.Bpp, r.Q, r.P, r.G);
+                            string avi = makeAvi(r.Fps, moving, r.J);
+                            string mp4 = encode(avi, r.Fps, r.Bpp, r.Q, 0, 0);
                             if (mp4 == null) { log.AppendLine("    " + r.Name + ": ENCODE FAILED"); continue; }
                             long kb = new FileInfo(mp4).Length / 1024; double db = psnr(avi, mp4); string key = (moving ? "moving " : "still ") + r.Name.Substring(0, 3); sizeKb[key] = kb; dB[key] = db;
-                            log.AppendLine("    " + r.Name.PadRight(44) + kb.ToString().PadLeft(6) + " KB   PSNR " + db.ToString("0.0") + " dB");
+                            log.AppendLine("    " + r.Name.PadRight(50) + kb.ToString().PadLeft(6) + " KB   PSNR " + db.ToString("0.0") + " dB");
                         }
                     }
                 }
@@ -681,11 +680,40 @@ namespace RXCapture
                 foreach (var kind in new[] { "moving ", "still " })
                 {
                     if (!sizeKb.ContainsKey(kind + "old") || !sizeKb.ContainsKey(kind + "new")) return kind.Trim() + ": an encode failed";
-                    if (sizeKb[kind + "new"] > sizeKb[kind + "old"] * 0.65) return kind.Trim() + ": new default " + sizeKb[kind + "new"] + " KB is not at least 35% smaller than the old " + sizeKb[kind + "old"] + " KB";
-                    if (dB[kind + "new"] < 32) return kind.Trim() + ": new default looks too soft (PSNR " + dB[kind + "new"].ToString("0.0") + " dB)";
+                    if (sizeKb[kind + "new"] > sizeKb[kind + "old"]) return kind.Trim() + ": new default " + sizeKb[kind + "new"] + " KB is bigger than the old " + sizeKb[kind + "old"] + " KB";
+                    if (dB[kind + "new"] < dB[kind + "old"] - 0.5) return kind.Trim() + ": new default is softer than the old one (PSNR " + dB[kind + "new"].ToString("0.0") + " vs " + dB[kind + "old"].ToString("0.0") + " dB)";
+                    if (dB[kind + "hig"] < dB[kind + "old"] || sizeKb[kind + "hig"] > sizeKb[kind + "old"]) return kind.Trim() + ": high quality is not sharper than, and no bigger than, the old default (" + dB[kind + "hig"].ToString("0.0") + " dB " + sizeKb[kind + "hig"] + " KB)";
                     if (sizeKb[kind + "sma"] > sizeKb[kind + "new"] || sizeKb[kind + "hig"] < sizeKb[kind + "new"]) return kind.Trim() + ": small / balanced / high quality are not in size order";
                 }
-                if (Math.Abs(sizeKb["moving smo"] - sizeKb["moving new"]) > sizeKb["moving new"] * 0.4) return "30 fps costs much more than 24 fps in quality mode";
+                return null;
+            });
+
+            Check("playing an AVI working copy keeps the colours (no stretched contrast)", delegate
+            {
+                string avi = Path.Combine(tmp, "range.avi");
+                int[] levels = { 0, 20, 64, 128, 192, 235, 255 };
+                var codec = VideoRecorder.FindJpeg();
+                using (var w = new AviWriter(avi, 448, 64, 10))
+                using (var bmp = new Bitmap(448, 64, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+                using (var g = Graphics.FromImage(bmp))
+                using (var ep = new EncoderParameters(1))
+                {
+                    ep.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, RecorderForm.FrameJpegQuality);
+                    for (int i = 0; i < levels.Length; i++) using (var b = new SolidBrush(Color.FromArgb(levels[i], levels[i], levels[i]))) g.FillRectangle(b, i * 64, 0, 64, 64);
+                    for (int f = 0; f < 10; f++) using (var ms = new MemoryStream()) { bmp.Save(ms, codec, ep); w.AddFrame(ms.ToArray()); }
+                }
+                using (var rd = new Mp4Writer.Reader(avi))
+                using (var b = new Bitmap(rd.Width, rd.Height, System.Drawing.Imaging.PixelFormat.Format32bppRgb))
+                {
+                    if (rd.Fps != 10 || Math.Abs(rd.Duration.TotalSeconds - 1.0) > 0.01) return "wrong fps / duration: " + rd.Fps + " fps, " + rd.Duration.TotalSeconds + " s";
+                    rd.Seek(TimeSpan.FromSeconds(0.5)); TimeSpan ts;
+                    if (!rd.ReadFrame(b, out ts) || Math.Abs(ts.TotalSeconds - 0.5) > 0.001) return "seek to 0.5 s landed at " + ts.TotalSeconds;
+                    for (int i = 0; i < levels.Length; i++)
+                    {
+                        int got = b.GetPixel(i * 64 + 32, 32).G;
+                        if (Math.Abs(got - levels[i]) > 4) return "grey " + levels[i] + " is shown as " + got;
+                    }
+                }
                 return null;
             });
 
@@ -1151,11 +1179,26 @@ namespace RXCapture
                 return sw.Elapsed.TotalSeconds > 10 ? "converting 10 s of full HD took " + sw.Elapsed.TotalSeconds.ToString("0.0") + " s - slower than real time" : null;
             });
 
-            Check("frame rate default: 24 fps for new settings, old 15 fps default moves once, a later choice stays", delegate
+            Check("defaults: only All-in-One has a hotkey, video quality is high; old preset keys / balanced move once, own choices stay", delegate
             {
-                if (new AppSettings().VideoFps != 24) return "the default is not 24 fps";
+                var d = new AppSettings();
+                if (d.HkAllInOne != "PrintScreen" || d.HkRegion != "" || d.HkWindow != "" || d.HkFullScreen != "" || d.HkScroll != "" || d.HkFreehand != "" || d.HkRepeat != "" || d.HkVideo != "") return "a new settings file still presets a hotkey other than All-in-One";
+                if (d.VideoFps != 30 || d.VideoQuality != 2) return "the default is not 30 fps / high quality";
+                var old = new AppSettings { HkRegion = "Ctrl+Shift+R", HkVideo = "Ctrl+Shift+V", HkWindow = "Ctrl+Alt+W", VideoQuality = 1, SettingsVersion = 4 };
+                if (!old.ApplyDefaultsMigration() || old.HkRegion != "" || old.HkVideo != "" || old.VideoQuality != 2 || old.SettingsVersion != 5) return "old preset keys / balanced quality were not moved";
+                if (old.HkWindow != "Ctrl+Alt+W") return "a hotkey the user chose was cleared";
+                old.HkRegion = "Ctrl+Shift+R"; old.VideoQuality = 0;
+                if (old.ApplyDefaultsMigration() || old.HkRegion != "Ctrl+Shift+R" || old.VideoQuality != 0) return "the migration ran twice";
+                return null;
+            });
+
+            Check("frame rate default: 30 fps for new settings, old 15 / 24 fps defaults move once, a later choice stays", delegate
+            {
+                if (new AppSettings().VideoFps != 30) return "the default is not 30 fps";
                 var old = new AppSettings { VideoFps = 15, SettingsVersion = 2 };
-                if (!old.ApplyVideoFpsMigration() || old.VideoFps != 24 || old.SettingsVersion != 3) return "15 fps from an old file was not moved to 24";
+                if (!old.ApplyVideoFpsMigration() || old.VideoFps != 30 || old.SettingsVersion != 4) return "15 fps from an old file was not moved to 30";
+                var v3 = new AppSettings { VideoFps = 24, SettingsVersion = 3 };
+                if (!v3.ApplyVideoFpsMigration() || v3.VideoFps != 30) return "24 fps from the previous build was not moved to 30";
                 old.VideoFps = 15;                                           // the user picks 15 on purpose afterwards
                 if (old.ApplyVideoFpsMigration() || old.VideoFps != 15) return "a later 15 fps choice was overwritten";
                 var custom = new AppSettings { VideoFps = 20, SettingsVersion = 2 };

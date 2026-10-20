@@ -327,21 +327,40 @@ namespace RXCapture
         class VideoView : Control
         {
             Bitmap img;
+            int version, lastSet;                      // version counts the frames shown; lastSet is when the latest one arrived (Environment.TickCount)
+            Bitmap fit; int fitVersion, fitW, fitH;    // the still frame, resampled with Lanczos for the current size
+            readonly Timer settle = new Timer { Interval = 120 };
             public VideoView()
             {
                 SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
                 BackColor = Color.Black; Cursor = Cursors.Hand;
+                settle.Tick += (s, e) => { settle.Stop(); Invalidate(); };       // the picture stopped changing: redraw it sharp
             }
-            public void SetImage(Bitmap b) { img = b; Invalidate(); }
+            public void SetImage(Bitmap b) { img = b; version++; lastSet = Environment.TickCount; Invalidate(); }
+            protected override void Dispose(bool disposing) { if (disposing) { settle.Dispose(); if (fit != null) fit.Dispose(); } base.Dispose(disposing); }
             protected override void OnPaint(PaintEventArgs e)
             {
                 var g = e.Graphics; g.Clear(Color.Black);
                 if (img == null || ClientSize.Width < 2 || ClientSize.Height < 2) return;
                 float k = Math.Min((float)ClientSize.Width / img.Width, (float)ClientSize.Height / img.Height);
                 int w = Math.Max(1, (int)(img.Width * k)), h = Math.Max(1, (int)(img.Height * k));
-                g.InterpolationMode = k < 1 ? InterpolationMode.HighQualityBilinear : InterpolationMode.Bilinear;
+                int x = (ClientSize.Width - w) / 2, y = (ClientSize.Height - h) / 2;
                 g.PixelOffsetMode = PixelOffsetMode.Half;
-                g.DrawImage(img, (ClientSize.Width - w) / 2, (ClientSize.Height - h) / 2, w, h);
+                if (w == img.Width && h == img.Height) { g.InterpolationMode = InterpolationMode.NearestNeighbor; g.DrawImage(img, x, y, w, h); return; }     // 1:1: exact pixels
+                bool moving = unchecked(Environment.TickCount - lastSet) < 100;
+                if (moving) { settle.Stop(); settle.Start(); }                    // frames are arriving: the quick filter keeps up with 30 fps
+                else
+                {
+                    if (fit == null || fitVersion != version || fitW != w || fitH != h)
+                    {
+                        Bitmap r = null;
+                        try { r = Resampler.Resize(img, w, h); } catch { }
+                        if (r != null) { if (fit != null) fit.Dispose(); fit = r; fitVersion = version; fitW = w; fitH = h; }
+                    }
+                    if (fit != null && fitVersion == version && fitW == w && fitH == h) { g.InterpolationMode = InterpolationMode.NearestNeighbor; g.DrawImage(fit, x, y, w, h); return; }
+                }
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.DrawImage(img, x, y, w, h);
             }
         }
 

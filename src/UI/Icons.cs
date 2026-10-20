@@ -368,13 +368,13 @@ namespace RXCapture
                         if (n == "speaker_off") g.DrawLine(P(Color.FromArgb(255, 84, 84), 2.6f), 3.5f, 3.5f, 20.5f, 20.5f);
                         break;
                     case "pause":
-                        g.FillRectangle(inkB, 6, 5, 4.5f, 14); g.FillRectangle(inkB, 13.5f, 5, 4.5f, 14);
+                        g.FillRectangle(inkB, 5, 3, 6, 18); g.FillRectangle(inkB, 13, 3, 6, 18);       // whole pixels at 24 px: crisp edges
                         break;
                     case "stop":
-                        g.FillRectangle(new SolidBrush(Red), 5.5f, 5.5f, 13, 13);
+                        g.FillRectangle(light ? Brushes.White : new SolidBrush(Red), 4, 4, 16, 16);
                         break;
                     case "record_w":
-                        g.FillEllipse(Brushes.White, 5f, 5f, 14, 14);
+                        g.FillEllipse(Brushes.White, 3f, 3f, 18, 18);
                         break;
                     case "record":
                         g.FillEllipse(new SolidBrush(Red), 4.5f, 4.5f, 15, 15);

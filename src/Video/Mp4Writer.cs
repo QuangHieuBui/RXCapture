@@ -41,8 +41,8 @@ namespace RXCapture
             /// <summary>Bits per pixel per second at 15 fps for constant-rate encoding (Quality = 0).</summary>
             public static double BitsPerPixel = 1.5;
             /// <summary>1..100: quality-based variable bit rate (a still screen costs little, motion gets the bits); 0 = constant bit rate (BitsPerPixel).
-            /// 45 = small file, 55 = balanced, 60 = high quality. Values above ~65 grow very fast.</summary>
-            public static int Quality = 55;
+            /// 75 = small file, 90 = balanced, 97 = high quality (see AppSettings.QualityFor). The recorder's frames are clean (JPEG 95), so these stay small for screen content.</summary>
+            public static int Quality = 90;
 
             public static int Bitrate(int w, int h, int fps)
             {
@@ -479,8 +479,12 @@ namespace RXCapture
             public TimeSpan Duration { get; private set; }
             public int Fps { get; private set; }         // nominal frame rate (15 when the file does not say)
 
+            AviIndex avi;                               // AVI working copies are decoded here (GDI+), not by Media Foundation
+            int aviPos;
+
             public Reader(string path)
             {
+                if (path.EndsWith(".avi", StringComparison.OrdinalIgnoreCase)) { OpenAvi(path); return; }
                 if (MFStartup(MfVersion, 0) != 0) throw new InvalidOperationException("Media Foundation is not available");
                 started = true;
                 try
@@ -507,6 +511,32 @@ namespace RXCapture
                 catch { Dispose(); throw; }
             }
 
+            void OpenAvi(string path)
+            {
+                try
+                {
+                    avi = AviIndex.Open(path);
+                    using (var ms = new MemoryStream(avi.Read(0))) using (var first = new Bitmap(ms)) { Width = first.Width; Height = first.Height; }
+                    Fps = avi.Fps; Duration = TimeSpan.FromSeconds(avi.Count / (double)Fps);
+                }
+                catch { Dispose(); throw; }
+            }
+
+            bool ReadAviFrame(Bitmap dst, out TimeSpan time)
+            {
+                time = TimeSpan.Zero;
+                if (aviPos >= avi.Count) return false;
+                using (var ms = new MemoryStream(avi.Read(aviPos)))
+                using (var img = new Bitmap(ms))
+                using (var g = Graphics.FromImage(dst))
+                {
+                    g.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceCopy;
+                    g.DrawImageUnscaled(img, 0, 0);
+                }
+                time = TimeSpan.FromSeconds(aviPos / (double)Fps); aviPos++;
+                return true;
+            }
+
             TimeSpan ReadDuration()
             {
                 IntPtr pv = Marshal.AllocHGlobal(32);
@@ -522,6 +552,7 @@ namespace RXCapture
             /// <summary>Moves so that the next frame read is at or shortly before <paramref name="t"/> (it lands on an earlier key frame).</summary>
             public void Seek(TimeSpan t)
             {
+                if (avi != null) { aviPos = Math.Max(0, Math.Min(avi.Count, (int)(t.TotalSeconds * Fps + 1e-6))); return; }     // every JPEG frame is a key frame: exact
                 IntPtr pv = Marshal.AllocHGlobal(32);
                 try
                 {
@@ -537,6 +568,7 @@ namespace RXCapture
             public bool ReadFrame(Bitmap dst, out TimeSpan time)
             {
                 time = TimeSpan.Zero;
+                if (avi != null) return ReadAviFrame(dst, out time);
                 while (true)
                 {
                     int idx, flags; long ts; IMFSample sample;
@@ -596,6 +628,7 @@ namespace RXCapture
 
             public void Dispose()
             {
+                if (avi != null) { avi.Dispose(); avi = null; }
                 if (reader != null) { try { Marshal.ReleaseComObject(reader); } catch { } reader = null; }
                 if (started) { started = false; try { MFShutdown(); } catch { } }
             }
