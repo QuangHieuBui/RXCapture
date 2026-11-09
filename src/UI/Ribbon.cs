@@ -23,7 +23,7 @@ namespace RXCapture
         public abstract void Paint(Graphics g, float s, bool hover, bool down);
         public virtual bool HandleClick(Ribbon r, Point p) { return false; }
 
-        protected static readonly Font F = new Font("Segoe UI", 9.5f);
+        protected static readonly Font F = new Font("Roboto", 10.25f);
 
         protected static void Arrow(Graphics g, float cx, float cy, float s, Color c)
         {
@@ -238,8 +238,8 @@ namespace RXCapture
         bool layoutDirty = true;
         readonly List<RItem> laidOut = new List<RItem>();
         string lastTip;
-        static readonly Font TabFont = new Font("Segoe UI", 9.5f);
-        static readonly Font GroupFont = new Font("Segoe UI", 8.5f);
+        static readonly Font TabFont = new Font("Roboto", 10.25f);
+        static readonly Font GroupFont = new Font("Roboto", 9.25f);
         public const float UiZoom = 1.0f;                // the toolbar is drawn at the plain DPI scale (it was 20% larger)
 
         public Ribbon()
@@ -257,7 +257,11 @@ namespace RXCapture
         protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); UpdateHeight(); }
         protected override void OnDpiChangedAfterParent(EventArgs e) { base.OnDpiChangedAfterParent(e); UpdateHeight(); Relayout(); }
 
-        void UpdateHeight() { Height = TabH + ContentH + 1; }
+        bool compact;
+        /// <summary>Shows only the tab strip (more room for a video); clicking a tab other than File brings the tools back.</summary>
+        public bool Compact { get { return compact; } set { if (compact == value) return; compact = value; UpdateHeight(); Relayout(); } }
+
+        void UpdateHeight() { Height = TabH + (compact ? 0 : ContentH) + 1; }
 
         public void Relayout() { layoutDirty = true; Invalidate(); }
 
@@ -390,7 +394,7 @@ namespace RXCapture
                         if (FilePopup != null) FilePopup(PointToScreen(new Point(Tabs[i].Bounds.X, Tabs[i].Bounds.Bottom)));
                         else if (FileMenu != null) { var m = FileMenu(); m.Show(this, new Point(Tabs[i].Bounds.X, Tabs[i].Bounds.Bottom)); }
                     }
-                    else { Active = i; Relayout(); }
+                    else { Active = i; Compact = false; Relayout(); }
                     return;
                 }
             pressed = HitItem(e.Location);

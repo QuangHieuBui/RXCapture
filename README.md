@@ -61,7 +61,7 @@ Menu **Image**: đổi cỡ ảnh, canvas, xoay/lật, trim, viền, đổ bóng
 
 **File đã lưu là file chính**: sau khi **Save As** (ảnh hoặc video), file đó được gắn với mục trong thư viện và trở thành file chính khi chỉnh sửa: tiêu đề Editor hiện tên file, **Save / Ctrl+S ghi đè đúng file đó** (không hỏi tên, không tạo file mới), Save As lần sau mở sẵn đúng thư mục/tên/định dạng đó. Liên kết được nhớ lâu dài (kể cả sau khi mở lại từ thư viện hoặc khởi động lại). Mở lại một file ảnh mà RXCapture đã lưu và chưa bị sửa ở nơi khác sẽ tiếp tục đúng mục cũ (còn nguyên các đối tượng vẽ); file bị chương trình khác sửa thì mở như ảnh mới.
 
-**Video**: quay vùng màn hình, mặc định ra **MP4 (H.264)** (cài đặt cũ đang để AVI được chuyển sang MP4 một lần khi mở bản mới); có thể chọn AVI (Motion-JPEG) hoặc GIF động. MP4 dùng bộ mã hóa có sẵn của Windows (Media Foundation), không cần cài thêm; `ffmpeg.exe` cạnh `RXCapture.exe` chỉ là dự phòng. Thanh điều khiển khi quay có nút **Record / Pause / Resume**, **Stop & save**, **Discard** kèm tên.
+**Video**: quay vùng màn hình và **ghi thẳng ra MP4 (H.264)** ngay lúc quay (chụp bằng GPU, mã hóa bằng phần cứng nếu có), nên dừng và lưu gần như tức thì; chọn GIF động ở hộp Save As. Chỉ khi máy không có bộ mã hóa H.264 thì quay ra AVI (Motion-JPEG) như trước và mã hóa lúc Save. MP4 dùng bộ mã hóa có sẵn của Windows (Media Foundation), không cần cài thêm; `ffmpeg.exe` cạnh `RXCapture.exe` chỉ là dự phòng. Thanh điều khiển khi quay có nút **Record / Pause / Resume**, **Stop & save**, **Discard** kèm tên.
 
 **Khay Library**: rê chuột vào một ảnh/video (hoặc chọn nó) để hiện nút **X** ở góc trên phải — bấm để **Đóng**: mục biến khỏi danh sách nhưng **không bị xóa** (file vẫn nằm trong thư viện, sửa dở đã được lưu; chuột phải > *Restore closed items* để mở lại tất cả, hoặc mở lại file đã lưu). **Xóa thật** nằm riêng trong chuột phải > *Delete*: luôn hỏi xác nhận (mặc định là "No"), rồi chuyển file vào **Thùng rác Windows** nên khôi phục được (khôi phục vào thư mục thư viện là mục hiện lại). Tự dọn khi thư viện quá 300 mục chỉ xóa mục cũ *chưa lưu ra file*, không bao giờ xóa mục đã lưu. **Chọn nhiều để đóng/xóa cùng lúc** (như Explorer): **kéo chuột bôi đen** một khung để chọn các mục nó chạm tới (kéo sát mép trên/dưới thì khay tự cuộn), **Ctrl+bấm** để thêm/bớt từng mục, **Shift+bấm** để chọn cả khoảng từ mục trước, bấm vào chỗ trống để bỏ chọn. Có thể chuột phải một mục > **Select multiple** để hiện ô tích. Khi đang chọn: bấm một mục = chỉ chọn mục đó (bấm đúp để mở), chuột phải > **Select all / Deselect all / Close selected (N) / Delete selected (N)** / Exit selection mode; phím **Delete** xóa (có hỏi), **Esc** thoát, **Ctrl+A** chọn tất cả.
 
@@ -85,6 +85,17 @@ RXCapture.exe --grab x,y,w,h out.png  # chụp một vùng, không giao diện
 
 ## Lịch sử phiên bản
 Mỗi lần đóng gói lại file cài đặt, thêm một mục ở đầu danh sách này (số phiên bản lấy từ `build-setup.ps1 -Version`).
+
+### 1.0.7
+**Mới**
+- Quay video mượt và nét hơn, lưu xong ngay: màn hình được chụp bằng GPU (DXGI Desktop Duplication, ~2–9 ms mỗi khung thay vì ~30 ms của GDI) và mã hóa H.264 ngay lúc quay (dùng NVENC / Quick Sync / AMF nếu máy có, nếu không thì bộ mã hóa phần mềm của Windows) rồi ghi thẳng ra MP4, kèm tiếng nếu có. Không còn qua JPEG nên hình hết mờ; bấm dừng chỉ mất vài chục mili giây và **Save** chỉ còn là chép tệp, quay lâu không còn giật hay đứt đoạn. Đo trên màn hình 2560×1440: 30,0 fps ổn định trong 3 phút, 0 khung bị rơi (trước đây chỉ ~25 fps và phải chép trùng khung). Máy không dùng được DXGI hoặc không có bộ mã hóa H.264 (Windows N) tự quay về cách cũ.
+- Cắt video nhanh hơn khoảng 4 lần: khung hình giải mã ra NV12 rồi đưa thẳng vào bộ mã hóa, không qua ảnh RGB (38 giây hình trên video 1920×1032: ~14 giây còn ~4 giây). Video AVI cũ vẫn cắt bằng đường cũ.
+- Video MP4 trong Library có thêm kiểu lưu **GIF** ở hộp Save As.
+- Biểu tượng ứng dụng mới (logo RX trên nền xanh); giao diện dùng font Roboto nhúng sẵn trong exe; thanh công cụ của Editor thu gọn khi xem video.
+
+**Sửa lỗi**
+- Khung hình đầu tiên khi chụp bằng DXGI có thể đen khi màn hình đang tĩnh: được lấy bằng GDI cho tới khi có hình thật.
+- Sửa hình bị lệch / viền xanh khi cắt video có chiều cao hoặc chiều rộng không chia hết cho 16.
 
 ### 1.0.6
 **Mới**

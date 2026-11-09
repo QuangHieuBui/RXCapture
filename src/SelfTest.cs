@@ -50,7 +50,7 @@ namespace RXCapture
             {
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 using (var br = new LinearGradientBrush(new Rectangle(0, 0, w, h), Color.FromArgb(255, 240, 246, 255), Color.FromArgb(255, 176, 208, 245), 60f)) g.FillRectangle(br, 0, 0, w, h);
-                using (var f = new Font("Segoe UI", 20, FontStyle.Bold, GraphicsUnit.Pixel))
+                using (var f = new Font("Roboto", 20, FontStyle.Bold, GraphicsUnit.Pixel))
                     for (int i = 0; i < 6; i++)
                     {
                         g.FillRectangle(Brushes.White, 30, 30 + i * 60, w - 60, 44);
@@ -1088,7 +1088,7 @@ namespace RXCapture
             {
                 using (var src = new Bitmap(780, 480, PixelFormat.Format32bppArgb))
                 {
-                    using (var g = Graphics.FromImage(src)) { g.Clear(Color.White); using (var f = new Font("Segoe UI", 9f)) for (int i = 0; i < 24; i++) g.DrawString("Line " + i + " the quick brown fox jumps over", f, Brushes.Black, 6, 4 + i * 19); }
+                    using (var g = Graphics.FromImage(src)) { g.Clear(Color.White); using (var f = new Font("Roboto", 9.75f)) for (int i = 0; i < 24; i++) g.DrawString("Line " + i + " the quick brown fox jumps over", f, Brushes.Black, 6, 4 + i * 19); }
                     using (var th = LibraryStore.MakeThumb(src, 260, 160))
                     using (var old = new Bitmap(260, 160, PixelFormat.Format32bppArgb))
                     {
@@ -1423,6 +1423,105 @@ namespace RXCapture
                     }
             });
 
+            Check("record straight to MP4: top row first (not flipped), every frame kept, the sound is added, a time that does not grow is refused", delegate
+            {
+                string mp4 = Path.Combine(tmp, "live1.mp4"), wav = Path.Combine(tmp, "live1.wav");
+                try
+                {
+                    using (var fs = File.Create(wav))
+                    {
+                        fs.Write(new byte[AudioRecorder.WavHeader], 0, AudioRecorder.WavHeader);
+                        var pcm = new byte[AudioRecorder.Rate * 4];                              // 1 s of 48 kHz stereo 16-bit
+                        for (int i = 0; i < pcm.Length; i += 4) { short s = (short)(Math.Sin(i / 4 * 0.1) * 8000); pcm[i] = pcm[i + 2] = (byte)s; pcm[i + 1] = pcm[i + 3] = (byte)(s >> 8); }
+                        fs.Write(pcm, 0, pcm.Length);
+                    }
+                    var live = Mp4Writer.Live.TryOpen(mp4, 320, 180, 30, true);
+                    if (live == null) return null;                                                // no H.264 encoder in this Windows: the recorder uses its AVI path
+                    live.AttachSound(wav);
+                    for (int i = 0; i < 20; i++)
+                        using (var f = live.NewFrame())
+                        {
+                            var row = new byte[f.Stride];
+                            for (int y = 0; y < f.Height; y++)
+                            {
+                                bool top = y < f.Height / 2;                                      // red above, blue below (BGRA)
+                                for (int x = 0; x < f.Stride; x += 4) { row[x] = (byte)(top ? 0 : 255); row[x + 1] = 0; row[x + 2] = (byte)(top ? 255 : 0); row[x + 3] = 255; }
+                                System.Runtime.InteropServices.Marshal.Copy(row, 0, IntPtr.Add(f.Pixels, y * f.Stride), f.Stride);
+                            }
+                            f.Seal();
+                            long t = i * 10000000L / 30;
+                            if (!live.Write(f, t)) return "frame " + i + " was refused";
+                            if (live.Write(f, t)) return "a frame whose time did not grow was written";
+                        }
+                    if (!live.Finish(true)) return "the MP4 could not be finished";
+                    using (var rd = new Mp4Writer.Reader(mp4))
+                    using (var bmp = new Bitmap(rd.Width, rd.Height, PixelFormat.Format32bppRgb))
+                    {
+                        TimeSpan ts; int n = 0; Color topPx = Color.Empty, botPx = Color.Empty;
+                        while (rd.ReadFrame(bmp, out ts)) { if (n == 0) { topPx = bmp.GetPixel(160, 20); botPx = bmp.GetPixel(160, 160); } n++; }
+                        if (n != 20) return "frames in the MP4: " + n + " (20 written)";
+                        if (topPx.R < 180 || topPx.B > 90) return "the top of the picture is not red (flipped?): " + topPx;
+                        if (botPx.B < 180 || botPx.R > 90) return "the bottom of the picture is not blue (flipped?): " + botPx;
+                    }
+                    using (var ar = Mp4Writer.OpenAudio(mp4)) if (ar == null) return "the MP4 has no sound";
+                    return null;
+                }
+                finally { try { File.Delete(mp4); } catch { } try { File.Delete(wav); } catch { } }
+            });
+
+            Check("trim of a recording keeps the picture whole for sizes that are not a multiple of 16 (no green rows, no colour fringes)", delegate
+            {
+                string srcMp4 = Path.Combine(tmp, "trim_src.mp4"), dstMp4 = Path.Combine(tmp, "trim_dst.mp4");
+                try
+                {
+                    const int W = 322, H = 202;                                                    // neither is a multiple of 16: the decoder pads both
+                    var live = Mp4Writer.Live.TryOpen(srcMp4, W, H, 30, false);
+                    if (live == null) return null;                                                  // no H.264 encoder in this Windows
+                    for (int i = 0; i < 30; i++)
+                        using (var f = live.NewFrame())
+                        {
+                            var row = new byte[f.Stride];
+                            for (int y = 0; y < H; y++)
+                            {
+                                for (int x = 0; x < W; x++)                                         // colour gradients: wrong chroma rows show up as a colour shift
+                                {
+                                    row[x * 4] = (byte)(x * 255 / W); row[x * 4 + 1] = (byte)(y * 255 / H); row[x * 4 + 2] = (byte)(255 - x * 255 / W); row[x * 4 + 3] = 255;
+                                }
+                                System.Runtime.InteropServices.Marshal.Copy(row, 0, IntPtr.Add(f.Pixels, y * f.Stride), f.Stride);
+                            }
+                            f.Seal();
+                            live.Write(f, i * 10000000L / 30);
+                        }
+                    if (!live.Finish(true)) return "could not make the source MP4";
+                    Bitmap first; TimeSpan kept;
+                    if (!Mp4Writer.Trim(srcMp4, dstMp4, TimeSpan.FromSeconds(0.2), TimeSpan.FromSeconds(0.8), out first, out kept)) return "trim failed";
+                    if (first != null) first.Dispose();
+                    using (var a = new Mp4Writer.Reader(srcMp4))
+                    using (var b = new Mp4Writer.Reader(dstMp4))
+                    using (var ba = new Bitmap(a.Width, a.Height, PixelFormat.Format32bppRgb))
+                    using (var bb = new Bitmap(b.Width, b.Height, PixelFormat.Format32bppRgb))
+                    {
+                        if (b.Width != W || b.Height != H) return "size changed to " + b.Width + "x" + b.Height;
+                        TimeSpan ts;
+                        a.Seek(TimeSpan.FromSeconds(0.2)); if (!a.ReadFrame(ba, out ts)) return "cannot read the source";
+                        if (!b.ReadFrame(bb, out ts)) return "cannot read the trimmed video";
+                        double all = 0, topBand = 0; int nTop = 0;
+                        for (int y = 0; y < H; y++)
+                            for (int x = 0; x < W; x++)
+                            {
+                                Color p = ba.GetPixel(x, y), q = bb.GetPixel(x, y);
+                                int d = Math.Abs(p.R - q.R) + Math.Abs(p.G - q.G) + Math.Abs(p.B - q.B);
+                                all += d; if (y < 8) { topBand += d; nTop++; }
+                            }
+                        all /= (double)W * H * 3; topBand /= nTop * 3;
+                        if (all > 8) return "the trimmed picture differs from the source (mean error " + all.ToString("0.0") + ")";
+                        if (topBand > 12) return "the top rows differ from the source (mean error " + topBand.ToString("0.0") + "): green / shifted rows";
+                    }
+                    return null;
+                }
+                finally { try { File.Delete(srcMp4); } catch { } try { File.Delete(dstMp4); } catch { } }
+            });
+
             Check("save a working copy: MP4 with sound, the AVI and WAV are removed, the item now plays from the MP4; without sound or with the WAV lost it still works", delegate
             {
                 string dir = Path.Combine(tmp, "wc4"); Directory.CreateDirectory(dir);
@@ -1664,7 +1763,7 @@ namespace RXCapture
                                     using (var b = new Bitmap(640, 360)) using (var g = Graphics.FromImage(b)) using (var ms = new MemoryStream())
                                     {
                                         g.Clear(Color.FromArgb(30, 60, 110)); g.FillEllipse(Brushes.Orange, 20 + i * 12, 120, 90, 90);
-                                        g.DrawString("demo video", new Font("Segoe UI", 28f, FontStyle.Bold), Brushes.White, 200, 20);
+                                        g.DrawString("demo video", new Font("Roboto", 30.25f, FontStyle.Bold), Brushes.White, 200, 20);
                                         b.Save(ms, ImageFormat.Jpeg); w.AddFrame(ms.ToArray());
                                     }
                             Mp4Writer.Convert(avi, mp4, 15); File.Delete(avi);

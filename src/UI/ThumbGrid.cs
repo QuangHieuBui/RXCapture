@@ -18,7 +18,7 @@ namespace RXCapture
         int hover = -1;
         bool hoverX;                                   // the pointer is over the delete button of the hovered cell
         readonly ToolTip tip = new ToolTip();
-        static readonly Font LabelFont = new Font("Segoe UI", 8.5f);
+        static readonly Font LabelFont = new Font("Roboto", 9.25f);
 
         public event Action<LibItem> ItemOpen;
         /// <summary>Close was requested for an item (the X button, or right-click > Close): hide it from the list, delete nothing.

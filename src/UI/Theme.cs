@@ -242,7 +242,7 @@ namespace RXCapture
         {
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
-            Font = new Font("Segoe UI", 9f);
+            Font = new Font("Roboto", 9.75f);
             BackColor = Theme.Ribbon;
             ForeColor = Theme.Text;
             FormBorderStyle = FormBorderStyle.FixedDialog;

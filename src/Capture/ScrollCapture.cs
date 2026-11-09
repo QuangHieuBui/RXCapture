@@ -229,7 +229,7 @@ namespace RXCapture
             BackColor = Color.FromArgb(17, 24, 39);
             Size = new Size(360, 44);
             lbl.Dock = DockStyle.Fill; lbl.ForeColor = Color.White; lbl.TextAlign = ContentAlignment.MiddleCenter;
-            lbl.Font = new Font("Segoe UI", 10f);
+            lbl.Font = new Font("Roboto", 10.75f);
             lbl.Text = Loc.T("Scrolling capture…  press Esc to stop");
             Controls.Add(lbl);
             var mon = Screen.FromRectangle(region).Bounds;

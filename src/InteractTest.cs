@@ -814,8 +814,8 @@ namespace RXCapture
                 log.AppendLine((added ? "PASS " : "FAIL ") + "video with sound recorded (library videos " + before + " -> " + vids.Count + ")");
                 if (!added) return 1;
                 var v = vids[0];
-                bool ok = cfg.RecordSystemSound && v.Ext == "avi" && LibraryStore.SoundFile(v) != null;
-                log.AppendLine((ok ? "PASS " : "FAIL ") + "the Speaker button switched the sound on, and the recording is a working copy with its sound file (" + v.Ext + ")");
+                bool ok = cfg.RecordSystemSound && v.Ext == "mp4";
+                log.AppendLine((ok ? "PASS " : "FAIL ") + "the Speaker button switched the sound on, and the recording is an MP4 with the sound inside (" + v.Ext + ")");
                 if (!ok) failed++;
                 ok = micDisabledWhileRecording && muteClicked;
                 log.AppendLine((ok ? "PASS " : "FAIL ") + "while recording, a source that was off at the start is greyed out (Mic disabled = " + micDisabledWhileRecording + ")");
@@ -823,7 +823,7 @@ namespace RXCapture
                 using (var ar = Mp4Writer.OpenAudio(v.File))
                 {
                     ok = ar != null;
-                    log.AppendLine((ok ? "PASS " : "FAIL ") + "the working copy has its sound");
+                    log.AppendLine((ok ? "PASS " : "FAIL ") + "the recording has its sound");
                     if (!ok) failed++;
                     else
                     {
@@ -896,15 +896,18 @@ namespace RXCapture
                     if (!focused) failed++;
                     pl.Stop();          // the editor's own player has the file open now; the checks below use a player of their own
                 }
-                // whatever the format setting says, a recording is an AVI working copy until it is saved (MP4 / GIF are made on Save)
+                // whatever the format setting says, a recording is written straight to an MP4 (Windows has an H.264 encoder here); GIF is made on Save
                 var fi = new FileInfo(v.File);
-                bool okExt = v.Ext == "avi" && fi.Length > 5000;
-                log.AppendLine((okExt ? "PASS " : "FAIL ") + "setting " + fmt + ": working copy " + fi.Name + " " + fi.Length + " bytes, duration label " + v.DurationSec + "s");
+                bool okExt = v.Ext == "mp4" && fi.Length > 1000;
+                log.AppendLine((okExt ? "PASS " : "FAIL ") + "setting " + fmt + ": recording " + fi.Name + " " + fi.Length + " bytes, duration label " + v.DurationSec + "s");
                 if (!okExt) failed++;
                 {
-                    int n = 0; foreach (var f in AviReader.Frames(v.File)) n++;
-                    bool ok = n >= 20;
-                    log.AppendLine((ok ? "PASS " : "FAIL ") + "avi frames = " + n + " (15 fps, ~3 s expected ≥ 30)");
+                    int n = 0;
+                    using (var rd = new Mp4Writer.Reader(v.File))
+                    using (var fb = new Bitmap(rd.Width, rd.Height, System.Drawing.Imaging.PixelFormat.Format32bppRgb))
+                    { TimeSpan fts; while (rd.ReadFrame(fb, out fts)) n++; }
+                    bool ok = n >= 45;
+                    log.AppendLine((ok ? "PASS " : "FAIL ") + "mp4 frames = " + n + " (30 fps, ~3 s expected ≥ 45)");
                     if (!ok) failed++;
                 }
                 {
@@ -912,7 +915,7 @@ namespace RXCapture
                     log.AppendLine((fast ? "PASS " : "FAIL ") + "stop -> in the library and in the editor without converting: " + VideoRecorder.LastFinishMs + " ms");
                     if (!fast) failed++;
                 }
-                failed += PlaybackCheck(v, "avi", log); failed += TrimCheck(v, "avi", log);
+                failed += PlaybackCheck(v, "mp4", log); failed += TrimCheck(v, "mp4", log);
                 LibraryStore.Delete(v);
             }
             cfg0.RecordMic = micKeep; cfg0.RecordSystemSound = spkKeep;

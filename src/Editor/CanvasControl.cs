@@ -153,7 +153,7 @@ namespace RXCapture
         }
 
         float S { get { return Theme.Scale(this); } }
-        public int CanvasMargin { get { return (int)(36 * S); } }
+        public int CanvasMargin { get { return (int)(14 * S); } }
 
         public Tool CurrentTool
         {

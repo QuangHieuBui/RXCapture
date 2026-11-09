@@ -337,7 +337,7 @@ namespace RXCapture
         {
             float px = Math.Max(4, FontSize * scale);
             try { return new Font(FontName, px, Style, GraphicsUnit.Pixel); }
-            catch { return new Font("Segoe UI", px, Style, GraphicsUnit.Pixel); }
+            catch { return new Font("Roboto", px, Style, GraphicsUnit.Pixel); }
         }
 
         StringFormat MakeFormat(bool wrap, bool centerV)

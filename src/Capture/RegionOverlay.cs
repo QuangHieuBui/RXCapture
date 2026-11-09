@@ -57,9 +57,9 @@ namespace RXCapture
         public OverlayResult Result;
 
         static readonly Color Hi = Color.FromArgb(0, 168, 255);
-        readonly Font small = new Font("Segoe UI", 12f, FontStyle.Regular, GraphicsUnit.Pixel);
-        readonly Font smallB = new Font("Segoe UI", 12f, FontStyle.Bold, GraphicsUnit.Pixel);
-        readonly Font btnFont = new Font("Segoe UI", 16f, FontStyle.Bold, GraphicsUnit.Pixel);
+        readonly Font small = new Font("Roboto", 12f, FontStyle.Regular, GraphicsUnit.Pixel);
+        readonly Font smallB = new Font("Roboto", 12f, FontStyle.Bold, GraphicsUnit.Pixel);
+        readonly Font btnFont = new Font("Roboto", 16f, FontStyle.Bold, GraphicsUnit.Pixel);
 
         public RegionOverlay(Bitmap frozen, Rectangle vs, List<WinInfo> tops, OverlayMode mode, CaptureAction? forced)
         {

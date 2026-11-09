@@ -61,32 +61,32 @@ namespace RXCapture
         public VideoPlayerPanel()
         {
             Dock = DockStyle.Fill; BackColor = Color.Black; Visible = false;
-            bar.Dock = DockStyle.Bottom; bar.Height = 88; bar.BackColor = Theme.Ribbon;
+            bar.Dock = DockStyle.Bottom; bar.Height = 34; bar.BackColor = Theme.Ribbon;
             stage.Dock = DockStyle.Fill; stage.BackColor = Color.Black;
             Controls.Add(stage); Controls.Add(bar);
 
             view.Dock = DockStyle.Fill; view.Visible = false; view.Click += (s, e) => TogglePlay();
             stage.Controls.Add(view);
 
-            Style(btnPlay, "▶"); btnPlay.Font = new Font("Segoe UI Symbol", 11f); btnPlay.SetBounds(10, 6, 42, 32);
+            Style(btnPlay, "▶"); btnPlay.Font = new Font("Segoe UI Symbol", 11f); btnPlay.SetBounds(6, 4, 30, 26);
             btnPlay.Click += (s, e) => TogglePlay();
 
-            lblTime.AutoSize = false; lblTime.SetBounds(58, 6, 100, 32); lblTime.TextAlign = ContentAlignment.MiddleLeft;
-            lblTime.ForeColor = Theme.Text; lblTime.Font = new Font("Segoe UI", 9f); lblTime.Text = "0:00 / 0:00";
+            lblTime.AutoSize = false; lblTime.SetBounds(40, 4, 84, 26); lblTime.TextAlign = ContentAlignment.MiddleLeft;
+            lblTime.ForeColor = Theme.Text; lblTime.Font = new Font("Roboto", 9f); lblTime.Text = "0:00 / 0:00";
 
-            btnClose.Font = new Font("Segoe UI", 9f); Style(btnClose, Loc.T("Close video")); btnClose.Size = new Size(110, 34);
+            btnClose.Font = new Font("Roboto", 9f); Style(btnClose, Loc.T("Close video")); btnClose.Size = new Size(72, 26);
             btnClose.Click += (s, e) => { if (CloseRequested != null) CloseRequested(); };
-            btnExternal.Font = new Font("Segoe UI", 9f); Style(btnExternal, Loc.T("Open in default player")); btnExternal.Size = new Size(190, 34);
+            btnExternal.Font = new Font("Roboto", 9f); Style(btnExternal, Loc.T("Open in default player")); btnExternal.Size = new Size(138, 26);
             btnExternal.Click += (s, e) => { if (path != null) try { System.Diagnostics.Process.Start(path); } catch { } };
 
-            btnStart.Font = new Font("Segoe UI", 9f); Style(btnStart, "[  " + Loc.T("Set start")); btnStart.Size = new Size(120, 34);
+            btnStart.Font = new Font("Roboto", 9f); Style(btnStart, "[  " + Loc.T("Set start")); btnStart.Size = new Size(74, 26);
             btnStart.Click += (s, e) => MarkStart();
-            btnEnd.Font = new Font("Segoe UI", 9f); Style(btnEnd, "]  " + Loc.T("Set end")); btnEnd.Size = new Size(120, 34);
+            btnEnd.Font = new Font("Roboto", 9f); Style(btnEnd, "]  " + Loc.T("Set end")); btnEnd.Size = new Size(74, 26);
             btnEnd.Click += (s, e) => MarkEnd();
-            btnTrim.Font = new Font("Segoe UI", 9f, FontStyle.Bold); Style(btnTrim, "✂  " + Loc.T("Trim video")); btnTrim.Size = new Size(150, 34);
+            btnTrim.Font = new Font("Roboto", 9f, FontStyle.Bold); Style(btnTrim, "✂  " + Loc.T("Trim video")); btnTrim.Size = new Size(92, 26);
             btnTrim.BackColor = Theme.Accent; btnTrim.FlatAppearance.BorderColor = Theme.AccentLight;
             btnTrim.Click += (s, e) => { if (CanTrim && TrimRequested != null) TrimRequested(trimStart, trimEnd); };
-            lblRange.AutoSize = false; lblRange.TextAlign = ContentAlignment.MiddleLeft; lblRange.ForeColor = Theme.TextDim; lblRange.Font = new Font("Segoe UI", 9f);
+            lblRange.AutoSize = false; lblRange.TextAlign = ContentAlignment.MiddleLeft; lblRange.ForeColor = Theme.TextDim; lblRange.Font = new Font("Roboto", 9f);
 
             seek.Seeked += f => { SeekTo(TimeSpan.FromTicks((long)(duration.Ticks * Math.Max(0, Math.Min(1, f))))); };
             seek.DragChanged += d => { dragging = d; if (d) { if (audio != null) audio.Stop(); } else if (playing && audio != null) audio.Start(pos); };
@@ -96,7 +96,7 @@ namespace RXCapture
             LayoutBar(); UpdateRange();
 
             lblError.Dock = DockStyle.Fill; lblError.ForeColor = Theme.TextDim; lblError.BackColor = Color.Black;
-            lblError.TextAlign = ContentAlignment.MiddleCenter; lblError.Font = new Font("Segoe UI", 11f); lblError.Visible = false;
+            lblError.TextAlign = ContentAlignment.MiddleCenter; lblError.Font = new Font("Roboto", 12f); lblError.Visible = false;
             stage.Controls.Add(lblError);
 
             ticker.Tick += (s, e) => Tick();
@@ -112,13 +112,14 @@ namespace RXCapture
 
         void LayoutBar()
         {
-            int w = bar.ClientSize.Width;
-            seek.SetBounds(164, 6, Math.Max(40, w - 164 - 12), 34);
-            btnStart.Location = new Point(10, 46); btnEnd.Location = new Point(btnStart.Right + 6, 46);
-            btnClose.Location = new Point(w - btnClose.Width - 10, 46);
-            btnExternal.Location = new Point(btnClose.Left - btnExternal.Width - 6, 46);
-            btnTrim.Location = new Point(btnExternal.Left - btnTrim.Width - 6, 46);
-            lblRange.SetBounds(btnEnd.Right + 10, 46, Math.Max(20, btnTrim.Left - btnEnd.Right - 16), 34);
+            int w = bar.ClientSize.Width, y = 4, rangeW = 170;
+            btnClose.Location = new Point(w - btnClose.Width - 6, y);
+            btnExternal.Location = new Point(btnClose.Left - btnExternal.Width - 4, y);
+            btnTrim.Location = new Point(btnExternal.Left - btnTrim.Width - 4, y);
+            lblRange.SetBounds(btnTrim.Left - rangeW - 4, y, rangeW, 26);
+            btnEnd.Location = new Point(lblRange.Left - btnEnd.Width - 4, y);
+            btnStart.Location = new Point(btnEnd.Left - btnStart.Width - 4, y);
+            seek.SetBounds(128, y, Math.Max(40, btnStart.Left - 128 - 8), 26);
         }
 
         bool CanTrim

@@ -126,7 +126,7 @@ namespace RXCapture
             Controls.Add(p);
             pages.Add(p); cur = p; rowY = 6;
             nav.Items.Add(Loc.T(title));
-            var h = new Label { Text = Loc.T(title), Left = 4, Top = rowY, Width = 430, Height = 26, Font = new Font("Segoe UI", 12f, FontStyle.Bold) };
+            var h = new Label { Text = Loc.T(title), Left = 4, Top = rowY, Width = 430, Height = 26, Font = new Font("Roboto", 13f, FontStyle.Bold) };
             p.Controls.Add(h); rowY += 36;
         }
 

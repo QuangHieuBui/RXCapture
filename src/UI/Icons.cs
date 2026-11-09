@@ -252,7 +252,7 @@ namespace RXCapture
                         g.DrawRectangle(accPen, 8, 8, 8, 8);
                         break;
                     case "actual":
-                        using (var f = new Font("Segoe UI", 10, FontStyle.Bold, GraphicsUnit.Pixel))
+                        using (var f = new Font("Roboto", 10, FontStyle.Bold, GraphicsUnit.Pixel))
                         using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
                             g.DrawString("1:1", f, inkB, new RectangleF(0, 0, 24, 24), sf);
                         break;
@@ -318,7 +318,7 @@ namespace RXCapture
                         g.DrawRectangle(pen, 3, 3, 18, 18);
                         break;
                     case "watermark":
-                        using (var f = new Font("Segoe UI", 12, FontStyle.Bold | FontStyle.Italic, GraphicsUnit.Pixel))
+                        using (var f = new Font("Roboto", 12, FontStyle.Bold | FontStyle.Italic, GraphicsUnit.Pixel))
                         using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
                         {
                             g.DrawRectangle(pen, 3, 4, 18, 16);
@@ -340,7 +340,7 @@ namespace RXCapture
                         break;
                     case "help":
                         g.DrawEllipse(pen, 3, 3, 18, 18);
-                        using (var f = new Font("Segoe UI", 14, FontStyle.Bold, GraphicsUnit.Pixel))
+                        using (var f = new Font("Roboto", 14, FontStyle.Bold, GraphicsUnit.Pixel))
                         using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
                             g.DrawString("?", f, accB, new RectangleF(3, 3.5f, 18, 18), sf);
                         break;
@@ -397,7 +397,7 @@ namespace RXCapture
                         {
                             var st = n == "bold" ? FontStyle.Bold : (n == "italic" ? FontStyle.Italic : (n == "underline" ? FontStyle.Underline : FontStyle.Bold));
                             string ch = n == "bold" ? "B" : (n == "italic" ? "I" : (n == "underline" ? "U" : (n == "font" ? "Aa" : "A")));
-                            using (var f = new Font("Segoe UI", n == "font" ? 14 : 17, st, GraphicsUnit.Pixel))
+                            using (var f = new Font("Roboto", n == "font" ? 14 : 17, st, GraphicsUnit.Pixel))
                             using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
                                 g.DrawString(ch, f, n == "textcolor" ? accB : inkB, new RectangleF(0, 0, 24, 22), sf);
                             break;
@@ -434,7 +434,7 @@ namespace RXCapture
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TranslateTransform(r.X, r.Y);
             g.ScaleTransform(r.Width / 24f, r.Height / 24f);
-            using (var f = new Font("Segoe UI", 15, FontStyle.Bold, GraphicsUnit.Pixel))
+            using (var f = new Font("Roboto", 15, FontStyle.Bold, GraphicsUnit.Pixel))
             using (var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
             {
                 switch (variant)

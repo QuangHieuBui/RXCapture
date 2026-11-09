@@ -32,7 +32,7 @@ namespace RXCapture
             float s = Theme.Scale(this);
             var ic = Icons.Get("camera", (int)(34 * s), true);
             g.DrawImage(ic, (int)(18 * s), (Height - ic.Height) / 2);
-            using (var f = new Font("Segoe UI", 15f, FontStyle.Bold))
+            using (var f = new Font("Roboto", 16.25f, FontStyle.Bold))
                 TextRenderer.DrawText(g, Text, f, new Rectangle((int)(60 * s), (int)(6 * s), Width - (int)(70 * s), Height / 2 + (int)(4 * s)), Color.White, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             TextRenderer.DrawText(g, Sub, Font, new Rectangle((int)(60 * s), Height / 2 + (int)(6 * s), Width - (int)(70 * s), Height / 2 - (int)(10 * s)), Color.FromArgb(255, 220, 220), TextFormatFlags.Left | TextFormatFlags.Top | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
         }
@@ -146,7 +146,7 @@ namespace RXCapture
 
             // ---------- shared options (Share / Effects / Cursor / Timer)
             pShared.SetBounds(16, 190, 368, 150); pShared.BackColor = Theme.Ribbon; Controls.Add(pShared);
-            pShared.Controls.Add(new Label { Text = Loc.T("Output"), Left = 0, Top = 0, Width = 368, Height = 20, Font = new Font("Segoe UI", 9f, FontStyle.Bold), ForeColor = Theme.TextDim });
+            pShared.Controls.Add(new Label { Text = Loc.T("Output"), Left = 0, Top = 0, Width = 368, Height = 20, Font = new Font("Roboto", 9.75f, FontStyle.Bold), ForeColor = Theme.TextDim });
             AddLabel(pShared, "Share", 30);
             cbShare = AddCombo(pShared, 26, new[] { "Open in Editor", "Copy to clipboard", "Save to file", "Editor + Clipboard" });
             cbShare.SelectedIndexChanged += (s, e) => { if (loading) return; SetShare(cbShare.SelectedIndex); cfg.Save(); };
@@ -207,7 +207,7 @@ namespace RXCapture
 
         LinkLabel Link(string text, EventHandler h)
         {
-            var l = new LinkLabel { Text = Loc.T(text), AutoSize = true, Margin = new Padding(6, 4, 14, 0), Font = new Font("Segoe UI", 9.5f) };
+            var l = new LinkLabel { Text = Loc.T(text), AutoSize = true, Margin = new Padding(6, 4, 14, 0), Font = new Font("Roboto", 10.25f) };
             l.LinkClicked += (s, e) => h(s, e);
             return l;
         }
@@ -353,7 +353,7 @@ namespace RXCapture
                 p.Mode == CaptureMode.Scrolling ? "scroll" : p.Mode == CaptureMode.Freehand ? "freehand" :
                 p.Mode == CaptureMode.Video ? "video" : p.Mode == CaptureMode.Region || p.Mode == CaptureMode.Fixed || p.Mode == CaptureMode.Repeat ? "region" : "camera", 24, true);
             e.Graphics.DrawImage(ic, e.Bounds.X + 8, e.Bounds.Y + (e.Bounds.Height - 24) / 2, 24, 24);
-            using (var f = new Font("Segoe UI", 9.5f, FontStyle.Bold))
+            using (var f = new Font("Roboto", 10.25f, FontStyle.Bold))
                 TextRenderer.DrawText(e.Graphics, p.Name, f, new Rectangle(e.Bounds.X + 40, e.Bounds.Y + 4, e.Bounds.Width - 48, 20), Color.White, TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
             TextRenderer.DrawText(e.Graphics, p.Summary(), Font, new Rectangle(e.Bounds.X + 40, e.Bounds.Y + 25, e.Bounds.Width - 48, 18), sel ? Color.FromArgb(220, 235, 250) : Theme.TextDim, TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
         }
@@ -427,7 +427,7 @@ namespace RXCapture
             AutoScaleMode = AutoScaleMode.Dpi;
             Text = "RXCapture - " + Loc.T("Library");
             BackColor = Theme.Back; ForeColor = Theme.Text;
-            Font = new Font("Segoe UI", 9f);
+            Font = new Font("Roboto", 9.75f);
             ClientSize = new Size(860, 600);
             StartPosition = FormStartPosition.CenterScreen;
             try { Icon = App.AppIcon; } catch { }

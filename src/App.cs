@@ -484,7 +484,7 @@ namespace RXCapture
             BackColor = Color.FromArgb(24, 24, 28); Opacity = 0.85;
             Size = new Size(120, 120);
             lbl.Dock = DockStyle.Fill; lbl.ForeColor = Color.White; lbl.TextAlign = ContentAlignment.MiddleCenter;
-            lbl.Font = new Font("Segoe UI", 48f, FontStyle.Bold);
+            lbl.Font = new Font("Roboto", 51.75f, FontStyle.Bold);
             Controls.Add(lbl);
             var mon = Screen.FromPoint(Cursor.Position).Bounds;
             Location = new Point(mon.X + (mon.Width - Width) / 2, mon.Y + (mon.Height - Height) / 2);

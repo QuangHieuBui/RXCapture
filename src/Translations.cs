@@ -80,6 +80,7 @@ namespace RXCapture
             Action("Video saved to the library", "Đã lưu video vào thư viện", d);
             Action("Recording is in the library - Save it to make an MP4", "Bản quay đã nằm trong thư viện - bấm Lưu để tạo MP4", d);
             Action("Recording ready - Save to create the MP4", "Bản quay đã sẵn sàng - bấm Lưu để tạo MP4", d);
+            Action("Recording is in the library", "Bản quay đã nằm trong thư viện", d); Action("Could not save the recording", "Không lưu được bản quay", d);
             Action("Saving video…", "Đang lưu video…", d); Action("Could not save this video.", "Không lưu được video này.", d);            Action("Creating GIF…", "Đang tạo GIF…", d); Action("Converting to MP4…", "Đang chuyển sang MP4…", d);
             Action("MP4 encoding is not available - the video was saved as AVI.", "Không mã hóa được MP4 - video được lưu dạng AVI.", d);
             Action("Record / Pause", "Ghi / Tạm dừng", d); Action("Stop and save", "Dừng và lưu", d); Action("Discard", "Hủy bỏ", d); Action("Ready", "Sẵn sàng", d);

@@ -71,8 +71,30 @@ namespace RXCapture
             }
         }
 
+        /// <summary>Writes an MP4 recording as an animated GIF (no sound), scaled down to <paramref name="maxWidth"/> pixels wide when it is wider (0 = as is).</summary>
+        public static void Mp4ToGif(string mp4, string gif, int maxWidth)
+        {
+            using (var rd = new Mp4Writer.Reader(mp4))
+            using (var src = new System.Drawing.Bitmap(rd.Width, rd.Height, System.Drawing.Imaging.PixelFormat.Format32bppRgb))
+            using (var fs = File.Create(gif))
+            {
+                int w = rd.Width, h = rd.Height;
+                if (maxWidth > 0 && w > maxWidth) { h = (int)((long)h * maxWidth / w); w = maxWidth; }
+                int delay = Math.Max(2, (int)Math.Round(100.0 / Math.Max(1, rd.Fps)));
+                var gw = new GifWriter(fs, w, h);
+                TimeSpan ts;
+                while (rd.ReadFrame(src, out ts))
+                    using (var bmp = new System.Drawing.Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+                    {
+                        using (var g = System.Drawing.Graphics.FromImage(bmp)) { g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic; g.DrawImage(src, 0, 0, w, h); }
+                        gw.AddFrame(bmp, delay);
+                    }
+                gw.Close();
+            }
+        }
+
         /// <summary>Moves the finished temporary file into place (replacing an older file), so a failed write never damages the destination.</summary>
-        static void Place(string part, string dest)
+        internal static void Place(string part, string dest)
         {
             if (File.Exists(dest)) File.Delete(dest);
             File.Move(part, dest);

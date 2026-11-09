@@ -58,7 +58,7 @@ namespace RXCapture
             AutoScaleMode = AutoScaleMode.None;
             Owner = owner;
             BackColor = RightBg; ForeColor = Theme.Text;
-            Font = new Font("Segoe UI", 9f);
+            Font = new Font("Roboto", 9.75f);
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
 
             int y = 0;

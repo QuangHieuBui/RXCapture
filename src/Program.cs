@@ -15,6 +15,7 @@ namespace RXCapture
         [STAThread]
         static int Main(string[] args)
         {
+            AppFont.Register();     // before any control or Font("Roboto") is created
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);

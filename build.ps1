@@ -29,6 +29,7 @@ $refs = 'System.dll', 'System.Core.dll', 'System.Drawing.dll', 'System.Windows.F
 $args = @('/nologo', '/target:winexe', '/optimize+', '/debug:pdbonly', '/codepage:65001', '/unsafe+', '/warn:3',
           "/out:$out\RXCapture.exe", "/win32manifest:$root\res\app.manifest", "/win32icon:$root\res\app.ico")
 $args += $refs | ForEach-Object { "/r:$_" }
+$args += Get-ChildItem "$root\res\fonts" -Filter *.ttf | ForEach-Object { "/resource:$($_.FullName),$($_.Name)" }
 $args += $src
 $args += $verInfo
 

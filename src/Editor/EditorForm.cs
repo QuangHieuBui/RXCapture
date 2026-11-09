@@ -37,7 +37,7 @@ namespace RXCapture
             Text = "RXCapture Editor";
             BackColor = Theme.Back;
             ForeColor = Theme.Text;
-            Font = new Font("Segoe UI", 9f);
+            Font = new Font("Roboto", 9.75f);
             ClientSize = new Size(1240, 780);
             MinimumSize = new Size(820, 520);
             StartPosition = FormStartPosition.CenterScreen;
@@ -62,6 +62,7 @@ namespace RXCapture
             Controls.SetChildIndex(player, 0);   // front of the z-order: it docks last and covers the canvas while a video plays
             player.CloseRequested += CloseVideo;
             player.TrimRequested += TrimVideo;
+            player.VisibleChanged += (s, e) => ribbon.Compact = player.Visible;   // a video needs room, not the drawing tools
             LibraryStore.Deleting += OnLibraryDeleting;
 
             BuildRibbon();
@@ -1187,6 +1188,25 @@ namespace RXCapture
             return true;
         }
 
+        /// <summary>Writes an MP4 recording as a GIF. The recording stays the item's main file (a GIF cannot be edited or saved back as video).</summary>
+        void SaveVideoAsGif(LibItem it, string dest)
+        {
+            bool ok = false; string part = dest + ".part";
+            var worker = new System.Threading.Thread(() =>
+            {
+                try { VideoExport.Mp4ToGif(it.File, part, AppSettings.Current.GifMaxWidth); VideoExport.Place(part, dest); ok = true; }
+                catch { try { File.Delete(part); } catch { } }
+            }) { IsBackground = true };
+            using (var wait = new BusyForm(Loc.T("Creating GIF…")))
+            {
+                wait.Show(Visible ? this : null); worker.Start();
+                while (!worker.Join(30)) Application.DoEvents();
+            }
+            if (!ok) { MessageBox.Show(this, Loc.T("Could not save this video."), "RXCapture", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+            AppSettings.Current.SaveFolder = Path.GetDirectoryName(dest);
+            status.Hint(Loc.T("Saved") + ": " + dest);
+        }
+
         /// <summary>Saves the video that is being shown to a file of the user's choice: a recording gets its MP4 (or GIF) made now, an MP4 / GIF is copied.</summary>
         void SaveVideoAs()
         {
@@ -1198,8 +1218,9 @@ namespace RXCapture
             string label = ext == "mp4" ? "MP4 video" : ext == "avi" ? "AVI video" : ext == "gif" ? "GIF animation" : ext.ToUpperInvariant() + " video";
             using (var sfd = new SaveFileDialog())
             {
-                sfd.Filter = working ? "MP4 video (*.mp4)|*.mp4|GIF animation (*.gif)|*.gif" : label + " (*." + ext + ")|*." + ext;
-                if (working && cfg.VideoFormat == "gif" && !hasSound) sfd.FilterIndex = 2;          // sound only fits in an MP4
+                bool gifOffered = working || ext == "mp4";                                           // an MP4 recording can also be written as a GIF (no sound)
+                sfd.Filter = gifOffered ? "MP4 video (*.mp4)|*.mp4|GIF animation (*.gif)|*.gif" : label + " (*." + ext + ")|*." + ext;
+                if (gifOffered && cfg.VideoFormat == "gif" && !hasSound) sfd.FilterIndex = 2;          // sound only fits in an MP4
                 sfd.DefaultExt = ext; sfd.AddExtension = true; sfd.OverwritePrompt = true;
                 string cur = it.ExportPath;
                 if (!string.IsNullOrEmpty(cur) && Directory.Exists(Path.GetDirectoryName(cur)))
@@ -1221,6 +1242,7 @@ namespace RXCapture
                     if (!SaveVideoTo(dest, format)) MessageBox.Show(this, Loc.T("Could not save this video."), "RXCapture", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
+                if (ext == "mp4" && string.Equals(Path.GetExtension(sfd.FileName), ".gif", StringComparison.OrdinalIgnoreCase)) { SaveVideoAsGif(it, sfd.FileName); return; }
                 try
                 {
                     string dest = sfd.FileName;

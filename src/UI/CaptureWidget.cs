@@ -54,7 +54,7 @@ namespace RXCapture
             StartPosition = FormStartPosition.Manual;
             AutoScaleMode = AutoScaleMode.None;
             BackColor = Bg; ForeColor = Theme.Text;
-            Font = new Font("Segoe UI", 9f);
+            Font = new Font("Roboto", 9.75f);
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
             viewPage = Math.Max(0, Math.Min(PageTitles.Length - 1, cfg.WidgetPage));
             anchor = Screen.PrimaryScreen.Bounds;

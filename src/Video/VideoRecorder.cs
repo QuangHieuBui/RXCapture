@@ -54,10 +54,10 @@ namespace RXCapture
             var clock = System.Diagnostics.Stopwatch.StartNew();
             try
             {
-                var item = LibraryStore.AddVideo(r.AviPath, r.FirstFrame, (int)Math.Round(r.Seconds), r.WavPath);
+                var item = LibraryStore.AddVideo(r.Mp4Path ?? r.AviPath, r.FirstFrame, (int)Math.Round(r.Seconds), r.WavPath);
                 App.ShowEditor();
                 if (item != null) App.Editor.ShowNewVideo(item);                      // open the new recording, not whatever was open before
-                App.Balloon(Loc.T("Recording is in the library - Save it to make an MP4"));
+                App.Balloon(Loc.T(r.Mp4Path != null ? "Recording is in the library" : "Recording is in the library - Save it to make an MP4"));
             }
             catch (Exception ex) { MessageBox.Show(ex.Message, "RXCapture", MessageBoxButtons.OK, MessageBoxIcon.Error); }
             finally
@@ -130,6 +130,7 @@ namespace RXCapture
 
     public class RecordingResult
     {
+        public string Mp4Path;          // recorded straight to MP4 (sound included); null when the old AVI working-copy path was used
         public string AviPath;
         public string WavPath;          // the recorded sound (48 kHz stereo WAV), null for a silent recording
         public Bitmap FirstFrame;
@@ -143,7 +144,7 @@ namespace RXCapture
         {
             FormBorderStyle = FormBorderStyle.None; StartPosition = FormStartPosition.CenterScreen; TopMost = true; ShowInTaskbar = false;
             BackColor = Theme.Ribbon; Size = new Size(300, 70);
-            var l = new Label { Text = text, ForeColor = Theme.Text, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Segoe UI", 11f) };
+            var l = new Label { Text = text, ForeColor = Theme.Text, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, Font = new Font("Roboto", 12f) };
             Controls.Add(l);
         }
     }
@@ -186,12 +187,13 @@ namespace RXCapture
         }
     }
 
-    /// <summary>Flat, square, icon-only segment of the recorder bar: fill colour = BackColor, lighter under the mouse, darker when pressed.
-    /// <see cref="Level"/> (0..1) draws a thin level meter along the bottom edge; -1 hides it.</summary>
+    /// <summary>Icon button of the recorder bar, drawn as a circle (Round) or a rounded square: fill = BackColor, lighter under the mouse,
+    /// darker when pressed, a soft ring on hover. <see cref="Level"/> (0..1) draws a thin level meter along the bottom; -1 hides it.</summary>
     class BarButton : Button
     {
         float level = -1f;
         public float Level { get { return level; } set { if (Math.Abs(value - level) > 0.02f || (value < 0) != (level < 0)) { level = value; Invalidate(); } } }
+        public bool Round;
         bool hot, down;
 
         public BarButton()
@@ -200,15 +202,24 @@ namespace RXCapture
             FlatStyle = FlatStyle.Flat; TabStop = false;
         }
 
-
         protected override void OnMouseEnter(EventArgs e) { hot = true; Invalidate(); base.OnMouseEnter(e); }
         protected override void OnMouseLeave(EventArgs e) { hot = false; down = false; Invalidate(); base.OnMouseLeave(e); }
         protected override void OnMouseDown(MouseEventArgs e) { down = true; Invalidate(); base.OnMouseDown(e); }
         protected override void OnMouseUp(MouseEventArgs e) { down = false; Invalidate(); base.OnMouseUp(e); }
 
-        static Color Mix(Color a, Color b, float t)
+        internal static Color Mix(Color a, Color b, float t)
         {
             return Color.FromArgb((int)(a.R + (b.R - a.R) * t), (int)(a.G + (b.G - a.G) * t), (int)(a.B + (b.B - a.B) * t));
+        }
+
+        internal static GraphicsPath Pill(RectangleF r, float radius)
+        {
+            float d = Math.Min(radius * 2, Math.Min(r.Width, r.Height));
+            var p = new GraphicsPath();
+            p.AddArc(r.X, r.Y, d, d, 180, 90); p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90); p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            p.CloseFigure();
+            return p;
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -219,61 +230,74 @@ namespace RXCapture
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             Color fill = BackColor;
-            if (!Enabled) fill = Mix(fill, back, 0.55f);
-            else if (down) fill = Mix(fill, Color.Black, 0.18f);
-            else if (hot) fill = Mix(fill, Color.White, 0.16f);
-            using (var b = new SolidBrush(fill)) g.FillRectangle(b, 0, 0, Width, Height);          // flat, square segment (Snagit style): the bar's background shows as the 1 px divider
+            if (!Enabled) fill = Mix(fill, back, 0.6f);
+            else if (down) fill = Mix(fill, Color.Black, 0.2f);
+            else if (hot) fill = Mix(fill, Color.White, 0.14f);
+            var r = new RectangleF(1, 1, Width - 2, Height - 2);
+            using (var b = new SolidBrush(fill))
+            {
+                if (Round) g.FillEllipse(b, r);
+                else using (var path = Pill(r, 10)) g.FillPath(b, path);
+            }
+            if (hot && Enabled)
+                using (var p = new Pen(Color.FromArgb(70, 255, 255, 255), 1f))
+                {
+                    if (Round) g.DrawEllipse(p, r);
+                    else using (var path = Pill(r, 10)) g.DrawPath(p, path);
+                }
 
-            string text = Text ?? "";
-            Size ts = TextRenderer.MeasureText(g, text, Font, new Size(1000, 100), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
-            int gap = Image != null && text.Length > 0 ? 8 : 0, iw = Image != null ? Image.Width : 0;
-            int x = (Width - (iw + gap + ts.Width)) / 2;
-            int lift = Level >= 0 ? 2 : 0;                                    // make room for the meter
+            int lift = Level >= 0 ? 3 : 0;                                    // make room for the meter
             if (Image != null)
             {
-                if (Enabled) g.DrawImage(Image, x, (Height - Image.Height) / 2 - lift, Image.Width, Image.Height);
+                var dst = new Rectangle((Width - Image.Width) / 2, (Height - Image.Height) / 2 - lift, Image.Width, Image.Height);
+                if (Enabled) g.DrawImage(Image, dst);
                 else using (var ia = new System.Drawing.Imaging.ImageAttributes())
                 {
                     ia.SetColorMatrix(new System.Drawing.Imaging.ColorMatrix { Matrix33 = 0.4f });
-                    g.DrawImage(Image, new Rectangle(x, (Height - Image.Height) / 2 - lift, Image.Width, Image.Height), 0, 0, Image.Width, Image.Height, GraphicsUnit.Pixel, ia);
+                    g.DrawImage(Image, dst, 0, 0, Image.Width, Image.Height, GraphicsUnit.Pixel, ia);
                 }
             }
-            TextRenderer.DrawText(g, text, Font, new Rectangle(x + iw + gap, -lift, ts.Width + 4, Height), Enabled ? ForeColor : Color.FromArgb(125, 125, 132),
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
 
             if (Level >= 0)
             {
-                var track = new RectangleF(8, Height - 5, Width - 16, 2);
-                using (var b = new SolidBrush(Color.FromArgb(70, 255, 255, 255))) g.FillRectangle(b, track);
+                var track = new RectangleF(10, Height - 8, Width - 20, 3);
+                using (var b = new SolidBrush(Color.FromArgb(60, 255, 255, 255))) g.FillRectangle(b, track);
                 float w = Math.Max(0, Math.Min(1f, (float)Math.Sqrt(Level))) * track.Width;                  // sqrt: quiet sounds still show
                 if (w > 0) using (var b = new SolidBrush(Level > 0.85f ? Color.FromArgb(255, 190, 60) : Color.FromArgb(96, 214, 120))) g.FillRectangle(b, track.X, track.Y, w, track.Height);
             }
         }
     }
 
-    /// <summary>The clock area of the recorder bar: a status dot and the text (Ready / countdown / mm:ss).</summary>
+    /// <summary>The clock of the recorder bar: the time in large figures, and under it a status dot with a caption (REC / PAUSED / READY + size).</summary>
     class TimeBadge : Control
     {
         Color dot = Color.Empty;
+        string caption = "";
         public Color Dot { get { return dot; } set { if (value != dot) { dot = value; Invalidate(); } } }
+        public string Caption { get { return caption; } set { value = value ?? ""; if (value != caption) { caption = value; Invalidate(); } } }
         public TimeBadge() { SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true); }
         protected override void OnTextChanged(EventArgs e) { base.OnTextChanged(e); Invalidate(); }
         protected override void OnFontChanged(EventArgs e) { base.OnFontChanged(e); Invalidate(); }
         protected override void OnForeColorChanged(EventArgs e) { base.OnForeColorChanged(e); Invalidate(); }
+
+        static readonly Font CapFont = new Font("Roboto Medium", 8f);
 
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
             g.Clear(Parent != null ? Parent.BackColor : Color.Black);
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            int x = 6;
+            const TextFormatFlags F = TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
+            bool two = caption.Length > 0 || Dot != Color.Empty;
+            TextRenderer.DrawText(g, Text ?? "", Font, new Rectangle(4, two ? 6 : 0, Width - 4, two ? 28 : Height), ForeColor, F);
+            if (!two) return;
+            int x = 6, cy = Height - 14;
             if (Dot != Color.Empty)
             {
-                using (var b = new SolidBrush(Dot)) g.FillEllipse(b, x, Height / 2f - 5, 10, 10);
-                x += 18;
+                using (var b = new SolidBrush(Dot)) g.FillEllipse(b, x, cy - 3.5f, 7, 7);
+                x += 13;
             }
-            TextRenderer.DrawText(g, Text ?? "", Font, new Rectangle(x, 0, Width - x, Height), ForeColor,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(g, caption, CapFont, new Rectangle(x, cy - 8, Width - x, 16), Color.FromArgb(150, 152, 160), F);
         }
     }
 
@@ -304,6 +328,19 @@ namespace RXCapture
         string aviPath;
         Bitmap first;
         long framesWritten;
+
+        // recording straight to MP4: the capture thread (worker) fills frames, this thread hands them to the encoder, so a slow encoder never stalls the capture
+        volatile Mp4Writer.Live live;
+        string mp4Path;
+        Thread encoder;
+        readonly ManualResetEvent audioDone = new ManualResetEvent(false);
+        System.Collections.Concurrent.BlockingCollection<KeyValuePair<Mp4Writer.Frame, long>> queue;
+        volatile bool liveFailed;
+        volatile bool liveDone;
+        bool liveUsed;
+        [DllImport("winmm.dll")] static extern uint timeBeginPeriod(uint ms);
+        [DllImport("winmm.dll")] static extern uint timeEndPeriod(uint ms);
+        int Fps { get { return Math.Max(5, Math.Min(30, cfg.VideoFps)); } }
         int countdown;
         readonly Timer cd = new Timer { Interval = 1000 };
 
@@ -313,17 +350,19 @@ namespace RXCapture
             FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; TopMost = true;
             StartPosition = FormStartPosition.Manual;
             BackColor = BarBack;
-            Font = new Font("Segoe UI", 9.5f);
+            Font = new Font("Roboto", 10.25f);
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
-            Size = new Size(456, 56);
+            Size = new Size(386, 56);
 
-            // Snagit-style bar of square icon segments: Record/Pause | Stop & save | Speaker over Mic | clock | Discard (the 1 px gaps are the dividers)
-            btnRec.SetBounds(0, 0, 71, 56); btnStop.SetBounds(72, 0, 71, 56);
-            btnSpk.SetBounds(144, 0, 83, 27); btnMic.SetBounds(144, 28, 83, 28);
-            btnCancel.SetBounds(385, 0, 71, 56);
+            // Floating pill: round Record/Pause + Stop | big clock with status | Speaker + Mic | small Discard (thin dividers between the groups)
+            btnRec.SetBounds(8, 8, 40, 40); btnStop.SetBounds(54, 8, 40, 40);
+            btnRec.Round = true; btnStop.Round = true; btnCancel.Round = true;
+            btnSpk.SetBounds(246, 8, 40, 40); btnMic.SetBounds(292, 8, 40, 40);
+            btnCancel.SetBounds(350, 14, 28, 28);
             Setup(btnRec, "record", Loc.T("Record"), Loc.T("Record / Pause"), RecRed);
-            Setup(btnStop, "stop", Loc.T("Stop & save"), Loc.T("Stop and save"), StopBlue);
-            Setup(btnCancel, "close", Loc.T("Discard"), Loc.T("Discard"), Neutral);
+            Setup(btnStop, "stop", Loc.T("Stop & save"), Loc.T("Stop and save"), Neutral);
+            Setup(btnCancel, "close", Loc.T("Discard"), Loc.T("Discard"), BarBack);
+            btnCancel.Image = Icons.Get("close", 16, true);
             Setup(btnMic, "mic", Loc.T("Mic"), Loc.T("Record the microphone (before you press Record)"), Neutral);
             Setup(btnSpk, "speaker", Loc.T("Speaker"), Loc.T("Record the computer sound (before you press Record)"), Neutral);
             btnMic.Click += (s, e) => { if (started) { if (audio != null && audio.MicOk) audio.MicMuted = !audio.MicMuted; } else { cfg.RecordMic = !cfg.RecordMic; cfg.Save(); } ShowToggles(); };
@@ -333,7 +372,7 @@ namespace RXCapture
             btnRec.Click += (s, e) => RecClicked();
             btnStop.Click += (s, e) => StopClicked();
             btnCancel.Click += (s, e) => { cancelled = true; StopWorker(); Close(); };
-            lblTime.SetBounds(228, 0, 156, 56); ShowReady();
+            lblTime.SetBounds(110, 0, 124, 56); ShowReady();
             lblTime.MouseDown += (s, e) => { if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); } };   // drag the bar by its label
             lblTime.Cursor = Cursors.SizeAll;
             MouseDown += (s, e) => { if (e.Button == MouseButtons.Left) { ReleaseCapture(); SendMessage(Handle, 0xA1, (IntPtr)2, IntPtr.Zero); } };      // or by any empty part of the bar
@@ -360,13 +399,34 @@ namespace RXCapture
             return new Point(x, y);
         }
 
-        static readonly Font FontReady = new Font("Segoe UI", 10f), FontCount = new Font("Segoe UI Semibold", 20f), FontClock = new Font("Segoe UI Semibold", 15f);
-        static readonly Color BarBack = Color.FromArgb(38, 38, 38), Neutral = Color.FromArgb(58, 58, 58), RecRed = Color.FromArgb(196, 46, 46), StopBlue = Color.FromArgb(0, 103, 184);
+        static readonly Font FontCount = new Font("Roboto Medium", 23.75f), FontClock = new Font("Roboto Medium", 18.25f);
+        static readonly Color BarBack = Color.FromArgb(30, 31, 35), Neutral = Color.FromArgb(52, 54, 60), Dim = Color.FromArgb(40, 41, 46), RecRed = Color.FromArgb(226, 52, 52);
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.Clear(BarBack);
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var p = new Pen(Color.FromArgb(66, 68, 76), 1f)) foreach (int x in new[] { 102, 238, 340 }) g.DrawLine(p, x, 14, x, Height - 14);
+            if (!dwmRound) using (var p = new Pen(Color.FromArgb(70, 72, 80), 2f)) using (var path = BarButton.Pill(new RectangleF(0, 0, Width, Height), 16)) g.DrawPath(p, path);   // the region clips the outer half
+        }
+
+        [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+        bool dwmRound;
+
+        /// <summary>Windows 11 rounds and outlines the borderless bar itself (smooth edges). Older Windows: a clipping region, which has hard edges.</summary>
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            int round = 2, border = 80 << 16 | 72 << 8 | 70;    // DWMWCP_ROUND, border colour (BGR)
+            try { dwmRound = DwmSetWindowAttribute(Handle, 33, ref round, 4) == 0; if (dwmRound) DwmSetWindowAttribute(Handle, 34, ref border, 4); } catch { dwmRound = false; }
+            if (!dwmRound) Region = new Region(BarButton.Pill(new RectangleF(0, 0, Width, Height), 16));
+        }
 
         void Setup(BarButton b, string icon, string text, string tip, Color fill)
         {
             b.BackColor = fill; b.ForeColor = Color.White;
-            b.Font = new Font("Segoe UI Semibold", 10f);
+            b.Font = new Font("Roboto Medium", 10.75f);
             b.Image = Icons.Get(icon == "record" ? "record_w" : icon, 24, true); b.Text = "";      // icon only: the tooltip names it
             b.Cursor = Cursors.Hand; b.UseMnemonic = false;   // "Stop & save" must not turn & into a shortcut key
             tips.SetToolTip(b, tip);
@@ -382,14 +442,15 @@ namespace RXCapture
 
         void ShowReady()
         {
-            lblTime.Dot = Color.FromArgb(120, 120, 128);
-            lblTime.Font = FontReady; lblTime.ForeColor = Color.FromArgb(200, 200, 206);
-            lblTime.Text = Loc.T("Ready") + "  " + region.Width + "×" + region.Height;
+            lblTime.Dot = Color.FromArgb(120, 122, 130);
+            lblTime.Font = FontClock; lblTime.ForeColor = Color.FromArgb(130, 132, 140);
+            lblTime.Text = "00:00";
+            lblTime.Caption = Loc.T("Ready").ToUpper() + "  " + region.Width + "×" + region.Height;
         }
 
         void ShowCount()
         {
-            lblTime.Dot = Color.Empty;
+            lblTime.Dot = Color.Empty; lblTime.Caption = "";
             lblTime.Font = FontCount; lblTime.ForeColor = Color.White;
             lblTime.Text = countdown.ToString();
         }
@@ -436,7 +497,7 @@ namespace RXCapture
         static void Toggle(BarButton b, string icon, bool on, bool unavailable)
         {
             b.Image = Icons.Get(on ? icon : icon + "_off", 24, true);      // on / off is the icon itself (struck through when off)
-            b.BackColor = Neutral;
+            b.BackColor = on && !unavailable ? Neutral : Dim;
             b.Enabled = !unavailable;
             if (!on || unavailable) b.Level = -1;
         }
@@ -472,10 +533,34 @@ namespace RXCapture
             aviPath = Path.Combine(Path.GetTempPath(), "rxcapture_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".avi");
             if (cfg.RecordMic || cfg.RecordSystemSound) StartAudio();      // before the clock starts: opening the devices takes a moment
             ShowToggles();
+            OpenLive();
             sw.Start();
-            worker = new Thread(CaptureLoop) { IsBackground = true, Priority = ThreadPriority.AboveNormal };
+            worker = new Thread(live != null ? (ThreadStart)LiveLoop : CaptureLoop) { IsBackground = true, Priority = ThreadPriority.AboveNormal };
             worker.Start();
             ui.Start();
+        }
+
+        /// <summary>Opens the MP4 for a real-time recording. Stays null (the AVI working-copy path is used) when Windows has no H.264 encoder.</summary>
+        void OpenLive()
+        {
+            mp4Path = Path.Combine(Path.GetTempPath(), "rxcapture_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".mp4");
+            Mp4Writer.Encoder.Quality = AppSettings.QualityFor(cfg.VideoQuality);
+            queue = new System.Collections.Concurrent.BlockingCollection<KeyValuePair<Mp4Writer.Frame, long>>(6);
+            // Media Foundation's writer cannot be called from another apartment than the one that made it: the encoder thread (MTA) opens it,
+            // writes to it and closes it, and nothing else touches it.
+            var opened = new ManualResetEvent(false);
+            encoder = new Thread(() => EncodeLoop(opened)) { IsBackground = true, Name = "RXCapture encoder" };
+            encoder.SetApartmentState(ApartmentState.MTA);
+            encoder.Start();
+            opened.WaitOne(15000);
+            liveUsed = live != null;
+            if (!liveUsed)
+            {
+                if (encoder != null) { encoder.Join(2000); encoder = null; }
+                queue.Dispose(); queue = null;
+                try { if (File.Exists(mp4Path)) File.Delete(mp4Path); } catch { }
+                mp4Path = null;
+            }
         }
 
         void UpdateTime()
@@ -484,6 +569,7 @@ namespace RXCapture
             lblTime.Font = FontClock; lblTime.ForeColor = Color.White;
             lblTime.Dot = paused ? Color.FromArgb(240, 170, 40) : ((int)(t.TotalSeconds * 2) % 2 == 0 ? Color.FromArgb(232, 48, 48) : Color.FromArgb(120, 40, 44));   // blinks while recording
             lblTime.Text = string.Format("{0:00}:{1:00}", (int)t.TotalMinutes, t.Seconds);
+            lblTime.Caption = (paused ? Loc.T("Paused") : "REC").ToUpper() + "  " + region.Width + "×" + region.Height;
             // level meters on the Mic / Speaker buttons (fall off smoothly)
             if (audio != null && audio.MicOk && !audio.MicMuted && !paused) { micShown = Math.Max(audio.MicLevel, micShown * 0.7f); btnMic.Level = micShown; } else btnMic.Level = -1;
             if (audio != null && audio.SystemOk && !audio.SystemMuted && !paused) { spkShown = Math.Max(audio.SystemLevel, spkShown * 0.7f); btnSpk.Level = spkShown; } else btnSpk.Level = -1;
@@ -529,11 +615,97 @@ namespace RXCapture
             finally { if (writer != null) writer.Close(); }
         }
 
+        /// <summary>Capture thread of the real-time MP4 path. One picture per tick of the recording clock: DXGI (GPU) when available, GDI otherwise.
+        /// A tick that is missed leaves a gap in the time stamps (the previous picture stays on screen) instead of piling up work.</summary>
+        void LiveLoop()
+        {
+            int fps = Fps, w = region.Width, h = region.Height;
+            DxgiCapture cap = null;
+            try { timeBeginPeriod(1); } catch { }                  // Sleep(1) really sleeps 1 ms
+            try
+            {
+                cap = DxgiCapture.TryCreate(region);
+                long lastK = -1, count = 0;
+                while (!stopFlag && !liveFailed)
+                {
+                    if (paused) { Thread.Sleep(20); continue; }
+                    long k = sw.ElapsedMilliseconds * fps / 1000;
+                    if (k <= lastK) { Thread.Sleep(1); continue; }
+                    var f = live.NewFrame();
+                    bool got = false;
+                    if (cap != null)
+                    {
+                        bool changed;
+                        if (cap.Update(0, out changed)) got = cap.CopyTo(f.Pixels, f.Stride);
+                        else if (cap.Broken) { cap.Dispose(); cap = null; }          // DXGI gave up: GDI for the rest of the recording
+                    }
+                    using (var bmp = new Bitmap(w, h, f.Stride, PixelFormat.Format32bppRgb, f.Pixels))
+                    {
+                        if (!got) using (var g = Graphics.FromImage(bmp)) Native.CopyScreen(g, region);
+                        if (cfg.VideoCursor) CursorSnap.Take().DrawOn(bmp, region.Location);
+                        if (first == null) first = new Bitmap(bmp);
+                    }
+                    f.Seal();
+                    lastK = k;
+                    if (queue.TryAdd(new KeyValuePair<Mp4Writer.Frame, long>(f, k * 10000000L / fps))) count++;
+                    else f.Dispose();                                                 // the encoder is behind: skip this picture
+                }
+                framesWritten = count;
+            }
+            catch { liveFailed = true; }
+            finally
+            {
+                if (cap != null) cap.Dispose();
+                queue.CompleteAdding();
+                try { timeEndPeriod(1); } catch { }
+            }
+        }
+
+        /// <summary>Encoder thread: opens the MP4, writes the queued pictures (and the sound recorded so far) in time order, and once the capture and the
+        /// sound have stopped adds the rest of the sound and closes the file. <paramref name="opened"/> is set as soon as it is known whether the MP4 could be opened.</summary>
+        void EncodeLoop(ManualResetEvent opened)
+        {
+            Mp4Writer.Live l = null;
+            try
+            {
+                bool sound = audio != null && wavPath != null;
+                l = Mp4Writer.Live.TryOpen(mp4Path, region.Width, region.Height, Fps, sound);
+                if (l != null && sound) l.AttachSound(wavPath);
+                live = l;
+            }
+            catch { if (l != null) { l.Dispose(); l = null; } }
+            finally { opened.Set(); }
+            if (l == null) return;
+            foreach (var kv in queue.GetConsumingEnumerable())
+            {
+                try { if (!liveFailed) l.Write(kv.Key, kv.Value); }
+                catch { liveFailed = true; }
+                finally { kv.Key.Dispose(); }
+            }
+            audioDone.WaitOne(20000);                                  // the WAV is complete once the AudioRecorder has stopped
+            bool ok = false;
+            try { ok = !cancelled && !liveFailed && framesWritten > 0 && l.Finish(true); }
+            catch { }
+            if (!ok) { l.Dispose(); try { File.Delete(mp4Path); } catch { } }
+            liveDone = ok;
+        }
+
+        /// <summary>Ends the real-time MP4: tells the encoder thread that the sound is complete and waits until the file is closed
+        /// (a cancelled recording is dropped instead). Call after the capture thread and the audio recorder have stopped.</summary>
+        void FinishLive()
+        {
+            if (encoder == null) return;
+            audioDone.Set();
+            encoder.Join(30000); encoder = null;
+            if (queue != null) { queue.Dispose(); queue = null; }
+        }
+
         void StopWorker()
         {
             stopFlag = true; sw.Stop();
             if (worker != null) worker.Join(5000);
             if (audio != null) audio.Stop();                       // writes the last of the sound up to the stopped clock, closes the WAV
+            FinishLive();
         }
 
         public void StopClicked()
@@ -541,12 +713,19 @@ namespace RXCapture
             if (!started) { cancelled = true; Close(); return; }
             StopWorker();
             ui.Stop();
-            if (!cancelled && File.Exists(aviPath) && framesWritten > 0)
+            bool complete = liveUsed ? liveDone && File.Exists(mp4Path) : File.Exists(aviPath);
+            if (!cancelled && framesWritten > 0 && complete)
             {
-                Result = new RecordingResult { AviPath = aviPath, FirstFrame = first, Seconds = Math.Max(1, sw.Elapsed.TotalSeconds), Fps = Math.Max(5, Math.Min(30, cfg.VideoFps)) };
-                if (audio != null && audio.FramesWritten > 0 && wavPath != null && File.Exists(wavPath)) Result.WavPath = wavPath;
+                Result = new RecordingResult { FirstFrame = first, Seconds = Math.Max(1, sw.Elapsed.TotalSeconds), Fps = Fps };
+                if (liveUsed) Result.Mp4Path = mp4Path;
+                else
+                {
+                    Result.AviPath = aviPath;
+                    if (audio != null && audio.FramesWritten > 0 && wavPath != null && File.Exists(wavPath)) Result.WavPath = wavPath;
+                }
                 first = null;
             }
+            else if (!cancelled && liveUsed) App.Balloon(Loc.T("Could not save the recording"));
             Close();
         }
 
@@ -563,7 +742,8 @@ namespace RXCapture
             }
             if (Result == null)
             {
-                try { if (worker != null) worker.Join(3000); if (aviPath != null && File.Exists(aviPath)) File.Delete(aviPath); } catch { }
+                try { if (worker != null) worker.Join(3000); FinishLive(); if (aviPath != null && File.Exists(aviPath)) File.Delete(aviPath); } catch { }
+                try { if (mp4Path != null && File.Exists(mp4Path)) File.Delete(mp4Path); } catch { }
                 if (first != null) first.Dispose();
             }
         }

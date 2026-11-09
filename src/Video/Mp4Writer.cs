@@ -8,7 +8,7 @@ namespace RXCapture
 {
     /// <summary>H.264 MP4 output through the Windows Media Foundation sink writer (no ffmpeg needed). Windows N editions
     /// without the Media Feature Pack have no H.264 encoder; <see cref="Convert"/> then returns false.</summary>
-    public static class Mp4Writer
+    public static partial class Mp4Writer
     {
         const int MfVersion = 0x00020070;
         static readonly Guid MajorType = new Guid("48eba18e-f8c9-4687-bf11-0a74c9f96a8f");
@@ -34,6 +34,7 @@ namespace RXCapture
 
         static readonly Guid CodecRateControlMode = new Guid("1c0608e9-370c-4710-8a58-cb6181c42423");
         static readonly Guid CodecQuality = new Guid("fcbf57a3-7ea5-4b0c-9644-69b40c39c391");
+        static readonly Guid EnableHardwareTransforms = new Guid("a634a91c-822b-41b9-a494-4de4643612b0");
 
         /// <summary>How the H.264 video is encoded. Public so tests can compare settings.</summary>
         public static class Encoder
@@ -48,6 +49,14 @@ namespace RXCapture
             {
                 double b = (double)w * h * BitsPerPixel * Math.Sqrt(fps / 15.0);      // faster frame rates need fewer extra bits: frames are alike
                 return (int)Math.Min(20000000.0, Math.Max(400000.0, b));
+            }
+
+            /// <summary>Bit rate for recording straight to MP4 (the encoder runs in real time, so it needs more bits than the offline pass above
+            /// to keep text edges clean): bits per pixel per frame by <see cref="Quality"/> (75 / 90 / 97).</summary>
+            public static int LiveBitrate(int w, int h, int fps)
+            {
+                double bpp = Quality >= 95 ? 0.14 : Quality >= 85 ? 0.09 : 0.06;
+                return (int)Math.Min(40000000.0, Math.Max(1500000.0, (double)w * h * fps * bpp));
             }
         }
 
@@ -222,7 +231,7 @@ namespace RXCapture
                 var b = new byte[want];
                 int got = 0, n;
                 while (got < want && (n = fs.Read(b, got, want - got)) > 0) got += n;
-                got -= got % align;
+                if (got % align != 0) { fs.Seek(-(got % align), SeekOrigin.Current); got -= got % align; }      // a file that is still being written: take the half frame next time
                 time = frames * 10000000L / AudioRecorder.Rate;
                 if (got <= 0) { pcm = null; return false; }
                 if (got < want) Array.Resize(ref b, got);
@@ -237,6 +246,8 @@ namespace RXCapture
         {
             readonly IAudioSource src; readonly IMFSinkWriter writer; readonly int stream, rate, blockAlign;
             byte[] pend; long pendTime; bool has, done;
+            /// <summary>The source is a file that is still being written: running out of data now does not mean the end.</summary>
+            public bool Live;
 
             public AudioFeed(IAudioSource src, IMFSinkWriter writer, int stream, int rate, int blockAlign)
             { this.src = src; this.writer = writer; this.stream = stream; this.rate = rate; this.blockAlign = blockAlign; }
@@ -249,7 +260,7 @@ namespace RXCapture
                     if (!has)
                     {
                         if (done) return;
-                        if (!src.Next(out pend, out pendTime)) { done = true; return; }
+                        if (!src.Next(out pend, out pendTime)) { if (!Live) done = true; return; }
                         has = true;
                     }
                     if (pendTime > upTo) return;
@@ -394,6 +405,13 @@ namespace RXCapture
         public static bool Trim(string src, string dst, TimeSpan start, TimeSpan end, out Bitmap first, out TimeSpan kept)
         {
             first = null; kept = TimeSpan.Zero;
+            TimeSpan fastKept;
+            if (TrimFast(src, dst, start, end, out fastKept))
+            {
+                try { first = FirstKeptFrame(src, start); } catch { first = null; }
+                if (first != null) { kept = fastKept; return true; }
+                try { File.Delete(dst); } catch { }                                              // no thumbnail: do it the slow way
+            }
             bool started = false, ok = false;
             IPcmReader audio = null;
             try
@@ -473,7 +491,7 @@ namespace RXCapture
         {
             IMFSourceReader reader;
             bool started, topDown;
-            int srcStride;                              // bytes from one row to the next in the decoded frame (padded, not always Width * 4)
+            int srcStride;                            // bytes from one row to the next in the decoded frame (padded, not always Width * 4)
             public int Width { get; private set; }
             public int Height { get; private set; }
             public TimeSpan Duration { get; private set; }
@@ -635,12 +653,23 @@ namespace RXCapture
         }
 
         /// <summary>Opens the MP4 writer: stream 0 is H.264 video; with <paramref name="audioRate"/> &gt; 0 a second stream takes AAC sound.</summary>
-        static IMFSinkWriter Open(string mp4, int w, int h, int fps, int audioRate, int audioChannels, out int audioStream)
+        /// <param name="liveMode">0 = offline conversion / trim; 1 = recording in real time with hardware encoders allowed (frames are top-down); 2 = the same, software encoder only.</param>
+        /// <param name="videoIn">The picture format the caller will write (e.g. the NV12 a decoder hands out); null = RGB32 frames.</param>
+        static IMFSinkWriter Open(string mp4, int w, int h, int fps, int audioRate, int audioChannels, out int audioStream, int liveMode = 0, IMFMediaType videoIn = null)
         {
             audioStream = -1;
             IMFSinkWriter writer;
-            Check(MFCreateSinkWriterFromURL(mp4, IntPtr.Zero, IntPtr.Zero, out writer));
-            int bitrate = Encoder.Bitrate(w, h, fps);
+            IntPtr attrPtr = IntPtr.Zero;
+            if (liveMode == 1)
+            {
+                IMFAttributes sa; Check(MFCreateAttributes(out sa, 1));
+                Check(sa.SetUINT32(EnableHardwareTransforms, 1));                      // NVENC / Quick Sync / AMF when the PC has them
+                attrPtr = Marshal.GetComInterfaceForObject(sa, typeof(IMFAttributes));
+            }
+            int hrw = MFCreateSinkWriterFromURL(mp4, IntPtr.Zero, attrPtr, out writer);
+            if (attrPtr != IntPtr.Zero) Marshal.Release(attrPtr);
+            Check(hrw);
+            int bitrate = liveMode > 0 ? Encoder.LiveBitrate(w, h, fps) : Encoder.Bitrate(w, h, fps);
 
             IMFMediaType output; Check(MFCreateMediaType(out output));
             Check(output.SetGUID(MajorType, MediaVideo));
@@ -652,13 +681,18 @@ namespace RXCapture
             Check(output.SetUINT64(PixelAspect, (1UL << 32) | 1u));
             int stream; Check(writer.AddStream(output, out stream));
 
-            IMFMediaType input; Check(MFCreateMediaType(out input));
-            Check(input.SetGUID(MajorType, MediaVideo));
-            Check(input.SetGUID(Subtype, FormatRgb32));
-            Check(input.SetUINT32(InterlaceMode, 2));
-            Check(input.SetUINT64(FrameSize, ((ulong)w << 32) | (uint)h));
-            Check(input.SetUINT64(FrameRate, ((ulong)fps << 32) | 1u));
-            Check(input.SetUINT64(PixelAspect, (1UL << 32) | 1u));
+            IMFMediaType input = videoIn;
+            if (input == null)
+            {
+                Check(MFCreateMediaType(out input));
+                Check(input.SetGUID(MajorType, MediaVideo));
+                Check(input.SetGUID(Subtype, FormatRgb32));
+                Check(input.SetUINT32(InterlaceMode, 2));
+                Check(input.SetUINT64(FrameSize, ((ulong)w << 32) | (uint)h));
+                Check(input.SetUINT64(FrameRate, ((ulong)fps << 32) | 1u));
+                Check(input.SetUINT64(PixelAspect, (1UL << 32) | 1u));
+                if (liveMode == 1 || liveMode == 2) Check(input.SetUINT32(DefaultStride, w * 4));       // positive stride = the rows come top row first
+            }
             IMFAttributes enc = null;
             if (Encoder.Quality > 0)
             {
@@ -671,7 +705,7 @@ namespace RXCapture
             if (hrIn < 0 && enc != null) hrIn = writer.SetInputMediaType(stream, input, null);                 // this encoder does not know quality mode: constant rate
             Check(hrIn);
             if (enc != null) Marshal.ReleaseComObject(enc);
-            Marshal.ReleaseComObject(output); Marshal.ReleaseComObject(input);
+            Marshal.ReleaseComObject(output); if (videoIn == null) Marshal.ReleaseComObject(input);
 
             if (audioRate > 0)
             {
