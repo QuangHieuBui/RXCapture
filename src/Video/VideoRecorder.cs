@@ -625,20 +625,25 @@ namespace RXCapture
             try
             {
                 cap = DxgiCapture.TryCreate(region);
-                long lastK = -1, count = 0;
+                long lastK = -1, count = 0, lastWrite = 0;
+                Point lastCur = Point.Empty;
                 while (!stopFlag && !liveFailed)
                 {
                     if (paused) { Thread.Sleep(20); continue; }
                     long k = sw.ElapsedMilliseconds * fps / 1000;
                     if (k <= lastK) { Thread.Sleep(1); continue; }
-                    var f = live.NewFrame();
-                    bool got = false;
+                    bool changed = true, dxgi = false;
                     if (cap != null)
                     {
-                        bool changed;
-                        if (cap.Update(0, out changed)) got = cap.CopyTo(f.Pixels, f.Stride);
+                        if (cap.Update(0, out changed)) dxgi = true;
                         else if (cap.Broken) { cap.Dispose(); cap = null; }          // DXGI gave up: GDI for the rest of the recording
                     }
+                    // like Snagit: a still screen costs no picture (the file gets fewer, longer frames); one at least every second keeps seeking and sound in step
+                    var cp = System.Windows.Forms.Cursor.Position;
+                    bool moved = cfg.VideoCursor && cp != lastCur;
+                    if (dxgi && !changed && !moved && count > 0 && sw.ElapsedMilliseconds - lastWrite < 1000) { lastK = k; continue; }
+                    var f = live.NewFrame();
+                    bool got = dxgi && cap.CopyTo(f.Pixels, f.Stride);
                     using (var bmp = new Bitmap(w, h, f.Stride, PixelFormat.Format32bppRgb, f.Pixels))
                     {
                         if (!got) using (var g = Graphics.FromImage(bmp)) Native.CopyScreen(g, region);
@@ -647,6 +652,7 @@ namespace RXCapture
                     }
                     f.Seal();
                     lastK = k;
+                    lastCur = cp; lastWrite = sw.ElapsedMilliseconds;
                     if (queue.TryAdd(new KeyValuePair<Mp4Writer.Frame, long>(f, k * 10000000L / fps))) count++;
                     else f.Dispose();                                                 // the encoder is behind: skip this picture
                 }

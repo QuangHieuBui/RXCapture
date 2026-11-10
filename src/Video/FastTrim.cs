@@ -51,7 +51,7 @@ namespace RXCapture
                     catch { if (mode == 2) throw; try { File.Delete(dst); } catch { } }
                 }
                 AudioFeed feed = audio == null ? null : new AudioFeed(new TrimmedAudio(audio, start, end), writer, audioStream, audio.Rate, audio.BlockAlign);
-                int written = 0;
+                int written = 0; long lastOut = 0;
                 while (true)
                 {
                     int idx, flags; long ts; IMFSample sample;
@@ -67,7 +67,7 @@ namespace RXCapture
                         IMFSample packed = PackNv12(sample, w, h, outTime, frameDur);
                         try { Check(writer.WriteSample(0, packed)); }
                         finally { Marshal.ReleaseComObject(packed); }
-                        written++;
+                        written++; lastOut = outTime;
                     }
                     finally { Marshal.ReleaseComObject(sample); }
                 }
@@ -75,7 +75,7 @@ namespace RXCapture
                 {
                     if (feed != null) feed.Drain();
                     Check(writer.Finalize_());
-                    kept = TimeSpan.FromTicks(written * frameDur);
+                    kept = TimeSpan.FromTicks(lastOut + frameDur);
                     ok = true;
                 }
             }

@@ -86,6 +86,17 @@ RXCapture.exe --grab x,y,w,h out.png  # chụp một vùng, không giao diện
 ## Lịch sử phiên bản
 Mỗi lần đóng gói lại file cài đặt, thêm một mục ở đầu danh sách này (số phiên bản lấy từ `build-setup.ps1 -Version`).
 
+### 1.0.8
+**Mới**
+- Xem video trong Editor mượt hơn: việc giải mã video chạy trên một luồng riêng (giải mã trước vài khung hình), luồng giao diện chỉ vẽ nên không còn giật khi Editor đang bận.
+- Kéo thanh tua hoặc hai đầu cắt không còn giật: khi đang kéo chỉ hiện khung hình chính gần nhất để bám theo chuột, thả chuột ra mới tua chính xác. Video quay và video sau khi cắt có khung hình chính mỗi giây nên tua nhanh hơn.
+- Quay màn hình tĩnh giống Snagit: khi màn hình không đổi thì không ghi thêm khung hình (file nhỏ hơn), nhưng vẫn ghi ít nhất một khung mỗi giây để tua và âm thanh khớp nhau.
+
+**Sửa lỗi**
+- Video nhỏ phóng vào cửa sổ Editor lớn vẽ rất chậm (~100 ms mỗi khung, làm treo cả giao diện): đã đổi cách vẽ khi phát.
+- Nút Play/Pause hiển thị lỗi (chỉ còn một vạch mỏng): giờ được vẽ bằng hình, không phụ thuộc font.
+- Thời lượng video sau khi cắt tính theo khung hình cuối thay vì số khung hình, đúng với video có khung hình không đều.
+
 ### 1.0.7
 **Mới**
 - Quay video mượt và nét hơn, lưu xong ngay: màn hình được chụp bằng GPU (DXGI Desktop Duplication, ~2–9 ms mỗi khung thay vì ~30 ms của GDI) và mã hóa H.264 ngay lúc quay (dùng NVENC / Quick Sync / AMF nếu máy có, nếu không thì bộ mã hóa phần mềm của Windows) rồi ghi thẳng ra MP4, kèm tiếng nếu có. Không còn qua JPEG nên hình hết mờ; bấm dừng chỉ mất vài chục mili giây và **Save** chỉ còn là chép tệp, quay lâu không còn giật hay đứt đoạn. Đo trên màn hình 2560×1440: 30,0 fps ổn định trong 3 phút, 0 khung bị rơi (trước đây chỉ ~25 fps và phải chép trùng khung). Máy không dùng được DXGI hoặc không có bộ mã hóa H.264 (Windows N) tự quay về cách cũ.

@@ -902,12 +902,13 @@ namespace RXCapture
                 log.AppendLine((okExt ? "PASS " : "FAIL ") + "setting " + fmt + ": recording " + fi.Name + " " + fi.Length + " bytes, duration label " + v.DurationSec + "s");
                 if (!okExt) failed++;
                 {
-                    int n = 0;
+                    int n = 0; TimeSpan fts = TimeSpan.Zero, lastTs = TimeSpan.Zero;
                     using (var rd = new Mp4Writer.Reader(v.File))
                     using (var fb = new Bitmap(rd.Width, rd.Height, System.Drawing.Imaging.PixelFormat.Format32bppRgb))
-                    { TimeSpan fts; while (rd.ReadFrame(fb, out fts)) n++; }
-                    bool ok = n >= 45;
-                    log.AppendLine((ok ? "PASS " : "FAIL ") + "mp4 frames = " + n + " (30 fps, ~3 s expected ≥ 45)");
+                    { while (rd.ReadFrame(fb, out fts)) { n++; lastTs = fts; } }
+                    // a still screen is not written again (like Snagit): count what matters - the video covers ~3 s and has a picture at least every second
+                    bool ok = n >= 3 && lastTs.TotalSeconds >= 1.8;
+                    log.AppendLine((ok ? "PASS " : "FAIL ") + "mp4 frames = " + n + ", last at " + lastTs.TotalSeconds.ToString("0.0") + " s (~3 s expected, a picture at least every second)");
                     if (!ok) failed++;
                 }
                 {

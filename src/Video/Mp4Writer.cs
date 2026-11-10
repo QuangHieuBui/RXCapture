@@ -33,6 +33,7 @@ namespace RXCapture
         static readonly Guid AacProfileLevel = new Guid("7632f0e6-9538-4d61-acda-ea29c8c14456");
 
         static readonly Guid CodecRateControlMode = new Guid("1c0608e9-370c-4710-8a58-cb6181c42423");
+        static readonly Guid MaxKeyframeSpacing = new Guid("c16eb52b-73a1-476f-8d62-839d6a020652");
         static readonly Guid CodecQuality = new Guid("fcbf57a3-7ea5-4b0c-9644-69b40c39c391");
         static readonly Guid EnableHardwareTransforms = new Guid("a634a91c-822b-41b9-a494-4de4643612b0");
 
@@ -55,8 +56,9 @@ namespace RXCapture
             /// to keep text edges clean): bits per pixel per frame by <see cref="Quality"/> (75 / 90 / 97).</summary>
             public static int LiveBitrate(int w, int h, int fps)
             {
-                double bpp = Quality >= 95 ? 0.14 : Quality >= 85 ? 0.09 : 0.06;
-                return (int)Math.Min(40000000.0, Math.Max(1500000.0, (double)w * h * fps * bpp));
+                // screen content is mostly still: ~0.06 bit/pixel/frame keeps text sharp (was 0.14, i.e. 2x the size for no visible gain)
+                double bpp = Quality >= 95 ? 0.06 : Quality >= 85 ? 0.04 : 0.025;
+                return (int)Math.Min(16000000.0, Math.Max(1000000.0, (double)w * h * fps * bpp));
             }
         }
 
@@ -428,7 +430,7 @@ namespace RXCapture
                     int audioStream;
                     var writer = Open(dst, w, h, fps, audio != null ? audio.Rate : 0, audio != null ? audio.Channels : 0, out audioStream);
                     AudioFeed feed = audio == null ? null : new AudioFeed(new TrimmedAudio(audio, start, end), writer, audioStream, audio.Rate, audio.BlockAlign);
-                    int written = 0; TimeSpan ts;
+                    int written = 0; long lastOut = 0; TimeSpan ts;
                     while (rd.ReadFrame(frame, out ts))
                     {
                         if (ts.Ticks >= e100) break;
@@ -437,12 +439,12 @@ namespace RXCapture
                         long outTime = Math.Max(0, ts.Ticks - s100);
                         if (feed != null) feed.Pump(outTime);
                         WriteFrame(writer, frame, row, outTime, frameDur);
-                        written++;
+                        written++; lastOut = outTime;
                     }
                     if (feed != null && written > 0) feed.Drain();
                     Check(writer.Finalize_());
                     Marshal.ReleaseComObject(writer);
-                    kept = TimeSpan.FromTicks(written * frameDur);
+                    kept = TimeSpan.FromTicks(lastOut + frameDur);
                     ok = written > 0;
                 }
             }
@@ -679,6 +681,7 @@ namespace RXCapture
             Check(output.SetUINT64(FrameSize, ((ulong)w << 32) | (uint)h));
             Check(output.SetUINT64(FrameRate, ((ulong)fps << 32) | 1u));
             Check(output.SetUINT64(PixelAspect, (1UL << 32) | 1u));
+            Check(output.SetUINT32(MaxKeyframeSpacing, Math.Max(1, fps)));       // a key frame every second: seeking decodes at most one second of frames
             int stream; Check(writer.AddStream(output, out stream));
 
             IMFMediaType input = videoIn;

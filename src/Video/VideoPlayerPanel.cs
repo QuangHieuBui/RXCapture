@@ -33,16 +33,15 @@ namespace RXCapture
         readonly Timer ticker = new Timer { Interval = 10 };
         readonly Stopwatch clock = new Stopwatch();
 
-        Mp4Writer.Reader reader;
+        FramePump pump;                   // decodes the video on a thread of its own; this (UI) thread only paints what it hands over
         AudioPlayer audio;                // the sound of the file (null for a silent video); started and stopped together with the clock
-        Bitmap cur, next;                 // the frame on screen and the next decoded one, waiting for its time
-        TimeSpan curTs, nextTs;
-        bool haveNext;
+        FramePump.Frame cur;              // the frame on screen
+        TimeSpan curTs;
         TimeSpan clockBase, pos;          // pos = playback position; while playing it is clockBase + clock.Elapsed
         PictureBox gifBox;
         MemoryStream gifStream;
         string path, lastLabel = "";
-        bool playing, opened, dragging, durationKnown;
+        bool playing, opened, dragging, durationKnown, approx;
         int lastProgress;
         TimeSpan duration = TimeSpan.Zero;
         TimeSpan trimStart = TimeSpan.Zero, trimEnd = TimeSpan.Zero;
@@ -68,7 +67,7 @@ namespace RXCapture
             view.Dock = DockStyle.Fill; view.Visible = false; view.Click += (s, e) => TogglePlay();
             stage.Controls.Add(view);
 
-            Style(btnPlay, "▶"); btnPlay.Font = new Font("Segoe UI Symbol", 11f); btnPlay.SetBounds(6, 4, 30, 26);
+            Style(btnPlay, ""); btnPlay.SetBounds(6, 4, 30, 26); btnPlay.Paint += PaintPlayGlyph;
             btnPlay.Click += (s, e) => TogglePlay();
 
             lblTime.AutoSize = false; lblTime.SetBounds(40, 4, 84, 26); lblTime.TextAlign = ContentAlignment.MiddleLeft;
@@ -89,7 +88,14 @@ namespace RXCapture
             lblRange.AutoSize = false; lblRange.TextAlign = ContentAlignment.MiddleLeft; lblRange.ForeColor = Theme.TextDim; lblRange.Font = new Font("Roboto", 9f);
 
             seek.Seeked += f => { SeekTo(TimeSpan.FromTicks((long)(duration.Ticks * Math.Max(0, Math.Min(1, f))))); };
-            seek.DragChanged += d => { dragging = d; if (d) { if (audio != null) audio.Stop(); } else if (playing && audio != null) audio.Start(pos); };
+            seek.DragChanged += d =>
+            {
+                dragging = d;
+                if (pump != null) pump.Hold = d;
+                if (d) { if (audio != null) audio.Stop(); return; }
+                if (approx) SeekTo(pos);                                   // the last picture was cut short: show the exact one
+                else if (playing && audio != null) audio.Start(pos);
+            };
             seek.RangeDragged += OnRangeDragged;
             bar.Controls.AddRange(new Control[] { btnPlay, lblTime, seek, btnStart, btnEnd, lblRange, btnTrim, btnExternal, btnClose });
             bar.Resize += (s, e) => LayoutBar();
@@ -124,12 +130,12 @@ namespace RXCapture
 
         bool CanTrim
         {
-            get { return reader != null && duration > TimeSpan.Zero && trimEnd - trimStart >= TimeSpan.FromMilliseconds(200) && (trimStart > TimeSpan.Zero || trimEnd < duration); }
+            get { return pump != null && duration > TimeSpan.Zero && trimEnd - trimStart >= TimeSpan.FromMilliseconds(200) && (trimStart > TimeSpan.Zero || trimEnd < duration); }
         }
 
         void MarkStart()
         {
-            if (reader == null || duration <= TimeSpan.Zero) return;
+            if (pump == null || duration <= TimeSpan.Zero) return;
             trimStart = pos;
             if (trimEnd <= trimStart) trimEnd = duration;
             UpdateRange();
@@ -137,7 +143,7 @@ namespace RXCapture
 
         void MarkEnd()
         {
-            if (reader == null || duration <= TimeSpan.Zero) return;
+            if (pump == null || duration <= TimeSpan.Zero) return;
             trimEnd = pos;
             if (trimEnd <= trimStart) trimStart = TimeSpan.Zero;
             UpdateRange();
@@ -146,7 +152,7 @@ namespace RXCapture
         void UpdateRange()
         {
             double d = duration.TotalSeconds;
-            seek.SetRange(d > 0 ? trimStart.TotalSeconds / d : 0, d > 0 ? trimEnd.TotalSeconds / d : 1, d > 0 && reader != null);
+            seek.SetRange(d > 0 ? trimStart.TotalSeconds / d : 0, d > 0 ? trimEnd.TotalSeconds / d : 1, d > 0 && pump != null);
             seek.MinGap = d > 0 ? Math.Min(0.5, 0.2 / d) : 0.02;   // at least 0.2 s stays selected
             lblRange.Text = duration > TimeSpan.Zero ? Loc.T("Keep") + ": " + Fmt(trimStart) + " - " + Fmt(trimEnd) + "  (" + Fmt(trimEnd - trimStart) + ")" : "";
             btnTrim.Enabled = CanTrim;
@@ -155,7 +161,7 @@ namespace RXCapture
         /// <summary>The start or end grip of the green span was dragged: update the kept range and show the frame at that grip.</summary>
         void OnRangeDragged(double start, double end, bool endGrip)
         {
-            if (reader == null || duration <= TimeSpan.Zero) return;
+            if (pump == null || duration <= TimeSpan.Zero) return;
             Pause();
             trimStart = TimeSpan.FromTicks((long)(duration.Ticks * start));
             trimEnd = TimeSpan.FromTicks((long)(duration.Ticks * end));
@@ -181,16 +187,15 @@ namespace RXCapture
                     opened = true;
                     return;
                 }
-                reader = new Mp4Writer.Reader(file);
+                pump = new FramePump(file);
+                if (!pump.WaitOpened(15000)) throw new InvalidDataException("the video cannot be opened");
                 audio = AudioPlayer.TryOpen(file);
-                cur = new Bitmap(reader.Width, reader.Height, PixelFormat.Format32bppRgb);
-                next = new Bitmap(reader.Width, reader.Height, PixelFormat.Format32bppRgb);
-                duration = reader.Duration;
-                if (!reader.ReadFrame(cur, out curTs)) throw new InvalidDataException("no video frames");
+                duration = pump.Duration;
+                var first = pump.TakeLanded();
+                if (first == null) throw new InvalidDataException("no video frames");
                 durationKnown = duration > TimeSpan.Zero;
-                if (!durationKnown) duration = curTs + TimeSpan.FromSeconds(1);      // unknown: corrected when the end is reached
-                view.SetImage(cur); view.Visible = true; view.BringToFront();
-                haveNext = reader.ReadFrame(next, out nextTs);
+                if (!durationKnown) duration = first.Ts + TimeSpan.FromSeconds(1);      // unknown: corrected when the end is reached
+                Show(first); view.Visible = true; view.BringToFront();
                 trimStart = TimeSpan.Zero; trimEnd = duration;
                 opened = true;
                 UpdateRange();
@@ -203,17 +208,38 @@ namespace RXCapture
         void Fail()
         {
             Failed = true; playing = false; opened = false; ticker.Stop(); clock.Stop(); if (audio != null) audio.Stop();
+            if (pump != null) pump.Active = false;
             view.Visible = false;
             lblError.Text = Loc.T("This video cannot be played here."); lblError.Visible = true; lblError.BringToFront();
         }
 
-        void SetPlayGlyph() { btnPlay.Text = playing ? "❚❚" : "▶"; }
+        void SetPlayGlyph() { btnPlay.Invalidate(); }
 
-        void StartPlaying() { clockBase = pos; clock.Restart(); playing = true; SetPlayGlyph(); if (audio != null) audio.Start(pos); }
+        /// <summary>Play triangle / pause bars drawn as shapes: no font has to carry the glyphs.</summary>
+        void PaintPlayGlyph(object s, PaintEventArgs e)
+        {
+            var g = e.Graphics; g.SmoothingMode = SmoothingMode.AntiAlias;
+            float cx = btnPlay.Width / 2f, cy = btnPlay.Height / 2f;
+            using (var b = new SolidBrush(Theme.Text))
+            {
+                if (playing) { g.FillRectangle(b, cx - 5, cy - 6, 4, 12); g.FillRectangle(b, cx + 1, cy - 6, 4, 12); }
+                else g.FillPolygon(b, new[] { new PointF(cx - 4, cy - 7), new PointF(cx - 4, cy + 7), new PointF(cx + 6, cy) });
+            }
+        }
+
+        void StartPlaying() { clockBase = pos; clock.Restart(); playing = true; pump.Active = true; SetPlayGlyph(); if (audio != null) audio.Start(pos); }
+
+        /// <summary>Puts a frame from the decoder on screen and gives the one it replaces back.</summary>
+        void Show(FramePump.Frame f)
+        {
+            var old = cur; cur = f; curTs = f.Ts;
+            view.SetImage(f.Bmp);
+            pump.Release(old);
+        }
 
         public void TogglePlay()
         {
-            if (reader == null || Failed) return;
+            if (pump == null || Failed) return;
             if (playing) Pause();
             else
             {
@@ -226,7 +252,7 @@ namespace RXCapture
         {
             if (!playing) return;
             pos = Clamp(clockBase + clock.Elapsed);
-            clock.Stop(); playing = false; SetPlayGlyph(); if (audio != null) audio.Stop();
+            clock.Stop(); playing = false; pump.Active = false; SetPlayGlyph(); if (audio != null) audio.Stop();
         }
 
         TimeSpan Clamp(TimeSpan t) { return t < TimeSpan.Zero ? TimeSpan.Zero : (t > duration ? duration : t); }
@@ -234,56 +260,39 @@ namespace RXCapture
         /// <summary>Shows the frame at <paramref name="t"/> (the last one at or before it) and continues from there.</summary>
         public void SeekTo(TimeSpan t)
         {
-            if (reader == null) return;
+            if (pump == null) return;
             t = Clamp(t);
-            try
-            {
-                reader.Seek(t);
-                TimeSpan ts; bool got = false;
-                haveNext = false;
-                while (reader.ReadFrame(next, out ts))
-                {
-                    if (ts > t && got) { nextTs = ts; haveNext = true; break; }    // first frame after t stays queued
-                    Swap(); curTs = ts; got = true;
-                    if (ts > t) { haveNext = reader.ReadFrame(next, out nextTs); break; }
-                }
-                view.SetImage(cur);
-            }
-            catch { Fail(); return; }
+            // The decoder thread does the work and the picture shows up in Tick. While the bar is being dragged the first frame it reaches
+            // (the key frame) is enough to follow the mouse; letting go of the mouse asks for the exact one.
+            approx = dragging;
+            pump.Seek(t, dragging);
             pos = t; clockBase = t;
             if (playing) { clock.Restart(); if (audio != null && !dragging) audio.Start(t); }
             UpdateProgress(true);
         }
 
-        void Swap() { var b = cur; cur = next; next = b; }
-
         void Tick()
         {
-            if (reader == null || Failed) return;
-            try
+            if (pump == null || Failed) return;
+            if (pump.Failed) { Fail(); return; }
+            var landed = pump.TakeLanded();
+            if (landed != null) Show(landed);
+            if (playing)
             {
-                if (playing)
+                pos = clockBase + clock.Elapsed;
+                FramePump.Frame show = null, f;
+                while ((f = pump.TakeReady(pos)) != null) { pump.Release(show); show = f; }      // frames that are already late are skipped
+                if (show != null) Show(show);
+                if (pump.Ended && pos >= curTs + TimeSpan.FromMilliseconds(80))
                 {
-                    pos = clockBase + clock.Elapsed;
-                    bool changed = false;
-                    while (haveNext && nextTs <= pos)
-                    {
-                        Swap(); curTs = nextTs; changed = true;
-                        haveNext = reader.ReadFrame(next, out nextTs);
-                    }
-                    if (changed) view.SetImage(cur);
-                    if (!haveNext && pos >= curTs + TimeSpan.FromMilliseconds(80))
-                    {
-                        // reached the end: show the first frame again, ready to replay
-                        if (!durationKnown) { duration = curTs; durationKnown = true; trimEnd = duration; UpdateRange(); }
-                        playing = false; clock.Stop(); SetPlayGlyph(); if (audio != null) audio.Stop();
-                        SeekTo(TimeSpan.Zero);
-                        return;
-                    }
-                    if (pos > duration) pos = duration;
+                    // reached the end: show the first frame again, ready to replay
+                    if (!durationKnown) { duration = curTs; durationKnown = true; trimEnd = duration; UpdateRange(); }
+                    playing = false; clock.Stop(); pump.Active = false; SetPlayGlyph(); if (audio != null) audio.Stop();
+                    SeekTo(TimeSpan.Zero);
+                    return;
                 }
+                if (pos > duration) pos = duration;
             }
-            catch { Fail(); return; }
             int now = Environment.TickCount;
             if (now - lastProgress >= 50) { lastProgress = now; UpdateProgress(false); }
         }
@@ -300,12 +309,10 @@ namespace RXCapture
         /// <summary>Stops playback and releases the file (so it can be deleted).</summary>
         public void Stop()
         {
-            ticker.Stop(); clock.Stop(); playing = false; opened = false; haveNext = false;
+            ticker.Stop(); clock.Stop(); playing = false; opened = false;
             view.SetImage(null); view.Visible = false;
             if (audio != null) { audio.Dispose(); audio = null; }
-            if (reader != null) { reader.Dispose(); reader = null; }
-            if (cur != null) { cur.Dispose(); cur = null; }
-            if (next != null) { next.Dispose(); next = null; }
+            if (pump != null) { pump.Release(cur); cur = null; pump.Dispose(); pump = null; }     // waits for the decoder thread: the file is closed when this returns
             if (gifBox != null) { stage.Controls.Remove(gifBox); if (gifBox.Image != null) gifBox.Image.Dispose(); gifBox.Dispose(); gifBox = null; }
             if (gifStream != null) { gifStream.Dispose(); gifStream = null; }
             lblError.Visible = false; SetPlayGlyph(); path = null;
@@ -313,7 +320,7 @@ namespace RXCapture
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
         {
-            if (Visible && keyData == Keys.Space && reader != null) { TogglePlay(); return true; }
+            if (Visible && keyData == Keys.Space && pump != null) { TogglePlay(); return true; }
             if (Visible && keyData == Keys.Escape) { if (CloseRequested != null) CloseRequested(); return true; }
             return base.ProcessCmdKey(ref msg, keyData);
         }
@@ -360,7 +367,9 @@ namespace RXCapture
                     }
                     if (fit != null && fitVersion == version && fitW == w && fitH == h) { g.InterpolationMode = InterpolationMode.NearestNeighbor; g.DrawImage(fit, x, y, w, h); return; }
                 }
-                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                // While frames fly by, bicubic (~27 ms a frame) is too slow. GDI+'s plain Bilinear is quick when shrinking (9 ms) but takes ~115 ms when
+                // enlarging a small video into a big window (it starved the whole UI), where HighQualityBilinear needs only ~17 ms.
+                g.InterpolationMode = !moving ? InterpolationMode.HighQualityBicubic : (k > 1 ? InterpolationMode.HighQualityBilinear : InterpolationMode.Bilinear);
                 g.DrawImage(img, x, y, w, h);
             }
         }

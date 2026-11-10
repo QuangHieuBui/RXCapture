@@ -92,18 +92,28 @@ namespace RXCapture
             public bool Write(Frame f, long time)
             {
                 if (writer == null || time <= lastTime) return false;
+                // frames are not evenly spaced (still screens are skipped, like Snagit): a picture lasts until the next one, so it is written once that is known
+                if (pend != null) Emit(pend, pendTime, time - pendTime);
                 lastTime = time;
+                if (pend != null) pend.Dispose();
+                pend = f.Retain(); pendTime = time;
+                return true;
+            }
+
+            Frame pend; long pendTime;
+
+            void Emit(Frame f, long time, long length)
+            {
                 IMFSample sample; Check(MFCreateSample(out sample));
                 try
                 {
                     Check(sample.AddBuffer((IMFMediaBuffer)f.Media));
                     Check(sample.SetSampleTime(time));
-                    Check(sample.SetSampleDuration(duration));
+                    Check(sample.SetSampleDuration(length));
                     Check(writer.WriteSample(0, sample));
                 }
                 finally { Marshal.ReleaseComObject(sample); }
                 if (feed != null) feed.Pump(time);
-                return true;
             }
 
             /// <summary>Adds the rest of the sound (call after the <see cref="AudioRecorder"/> has stopped) and closes the file. False when it cannot be completed.</summary>
@@ -113,6 +123,7 @@ namespace RXCapture
                 bool ok = false;
                 try
                 {
+                    if (pend != null) { Emit(pend, pendTime, duration); pend.Dispose(); pend = null; }
                     if (anyFrame && feed != null) { feed.Live = false; feed.Drain(); }
                     Check(writer.Finalize_());
                     ok = anyFrame;
@@ -124,6 +135,7 @@ namespace RXCapture
 
             public void Dispose()
             {
+                if (pend != null) { pend.Dispose(); pend = null; }
                 if (wav != null) { wav.Dispose(); wav = null; }
                 if (writer != null) { try { Marshal.ReleaseComObject(writer); } catch { } writer = null; }
                 if (started) { started = false; try { MFShutdown(); } catch { } }
