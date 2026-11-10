@@ -1,0 +1,4 @@
+﻿RXCapture 1.0.8
+Built:   2026-11-10 22:01
+Source:  git 81bd9cd (uncommitted changes)
+SHA-256: 02EF0A68C09942DD95720CD32D4984C3809056C1AE2845FDE353053ABC9F00AC  (RXCapture-Setup-1.0.8.exe)
