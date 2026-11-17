@@ -415,7 +415,7 @@ namespace RXCapture
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+            if (g.TextRenderingHint != TextRenderingHint.ClearTypeGridFit) g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
             switch (Kind)
             {
                 case AnnKind.Arrow: DrawArrow(g, sh); break;

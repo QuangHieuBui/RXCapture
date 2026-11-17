@@ -23,7 +23,7 @@ namespace RXCapture
         public abstract void Paint(Graphics g, float s, bool hover, bool down);
         public virtual bool HandleClick(Ribbon r, Point p) { return false; }
 
-        protected static readonly Font F = new Font("Roboto", 10.25f);
+        protected static readonly Font F = new Font("Segoe UI", 9f);
 
         protected static void Arrow(Graphics g, float cx, float cy, float s, Color c)
         {
@@ -76,9 +76,9 @@ namespace RXCapture
             var r = Bounds;
             if (en && (hover || chk || down))
             {
-                var bg = down ? Color.FromArgb(96, 96, 104) : (chk ? Theme.Checked : Theme.Hover);
+                var bg = down ? Color.FromArgb(35, 69, 96) : (chk ? Color.FromArgb(23, 60, 86) : Theme.Hover);
                 using (var b = new SolidBrush(bg)) g.FillRectangle(b, r);
-                using (var p = new Pen(chk ? Color.FromArgb(120, 120, 128) : Color.FromArgb(84, 84, 90))) g.DrawRectangle(p, r.X, r.Y, r.Width - 1, r.Height - 1);
+                using (var p = new Pen(chk ? Color.FromArgb(112, 191, 255) : Color.FromArgb(84, 84, 90))) g.DrawRectangle(p, r.X, r.Y, r.Width - 1, r.Height - 1);
             }
             Color tc = en ? Theme.Text : Color.FromArgb(105, 105, 110);
             var flags = TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
@@ -87,15 +87,16 @@ namespace RXCapture
                 case BtnStyle.Tool:
                 case BtnStyle.Icon:
                     {
-                        int isz = (int)((Style == BtnStyle.Tool ? 26 : 18) * s);
-                        DrawIcon(g, Icon, isz, new Rectangle(r.X + (r.Width - isz) / 2, r.Y + (r.Height - isz) / 2, isz, isz), en);
+                        int isz = (int)((Style == BtnStyle.Tool ? 24 : 16) * s);
+                        DrawIcon(g, Icon, isz, new Rectangle(r.X + (r.Width - isz) / 2, r.Y + (r.Height - isz) / 2, isz, isz), en, chk);
                         break;
                     }
                 case BtnStyle.Big:
                     {
-                        int isz = (int)(28 * s);
-                        DrawIcon(g, Icon, isz, new Rectangle(r.X + (r.Width - isz) / 2, r.Y + (int)(4 * s), isz, isz), en);
-                        var tr = new Rectangle(r.X, r.Y + (int)(4 * s) + isz + (int)(1 * s), r.Width, r.Height - isz - (int)(6 * s));
+                        int isz = (int)(32 * s);
+                        int iconTop = r.Y + (int)(1 * s), textTop = iconTop + isz + (int)(1 * s);
+                        DrawIcon(g, Icon, isz, new Rectangle(r.X + (r.Width - isz) / 2, iconTop, isz, isz), en);
+                        var tr = new Rectangle(r.X, textTop, r.Width, r.Bottom - textTop);
                         string lbl = Label;
                         TextRenderer.DrawText(g, lbl, F, tr, tc, flags | TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.WordBreak);
                         if (DropDown != null)
@@ -130,15 +131,21 @@ namespace RXCapture
             }
         }
 
-        static void DrawIcon(Graphics g, string icon, int size, Rectangle r, bool enabled)
+        static void DrawIcon(Graphics g, string icon, int size, Rectangle r, bool enabled, bool selected = false)
         {
             if (icon == null) return;
             var bmp = Icons.Get(icon, size, true);
-            if (enabled) g.DrawImage(bmp, r);
+            if (enabled && !selected) g.DrawImageUnscaled(bmp, r.X, r.Y);
             else
                 using (var ia = new System.Drawing.Imaging.ImageAttributes())
                 {
-                    ia.SetColorMatrix(new System.Drawing.Imaging.ColorMatrix(new float[][] { new float[] { 1, 0, 0, 0, 0 }, new float[] { 0, 1, 0, 0, 0 }, new float[] { 0, 0, 1, 0, 0 }, new float[] { 0, 0, 0, 0.35f, 0 }, new float[] { 0, 0, 0, 0, 1 } }));
+                    var matrix = new System.Drawing.Imaging.ColorMatrix();
+                    matrix.Matrix33 = enabled ? 1f : 0.35f;
+                    if (enabled && selected)
+                    {
+                        matrix.Matrix00 = 141f / Theme.Text.R; matrix.Matrix11 = 208f / Theme.Text.G; matrix.Matrix22 = 255f / Theme.Text.B;
+                    }
+                    ia.SetColorMatrix(matrix);
                     g.DrawImage(bmp, r, 0, 0, bmp.Width, bmp.Height, GraphicsUnit.Pixel, ia);
                 }
         }
@@ -238,8 +245,8 @@ namespace RXCapture
         bool layoutDirty = true;
         readonly List<RItem> laidOut = new List<RItem>();
         string lastTip;
-        static readonly Font TabFont = new Font("Roboto", 10.25f);
-        static readonly Font GroupFont = new Font("Roboto", 9.25f);
+        static readonly Font TabFont = new Font("Segoe UI", 9f);
+        static readonly Font GroupFont = new Font("Segoe UI", 8.25f);
         public const float UiZoom = 1.0f;                // the toolbar is drawn at the plain DPI scale (it was 20% larger)
 
         public Ribbon()

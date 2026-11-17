@@ -37,7 +37,7 @@ namespace RXCapture
             Text = "RXCapture Editor";
             BackColor = Theme.Back;
             ForeColor = Theme.Text;
-            Font = new Font("Roboto", 9.75f);
+            Font = new Font("Segoe UI", 9f);
             ClientSize = new Size(1240, 780);
             MinimumSize = new Size(820, 520);
             StartPosition = FormStartPosition.CenterScreen;

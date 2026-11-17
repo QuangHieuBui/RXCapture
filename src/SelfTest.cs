@@ -89,6 +89,98 @@ namespace RXCapture
             return avi;
         }
 
+        internal static string AnnotationTextRaster()
+        {
+            foreach (bool transparent in new[] { false, true })
+            using (var src = new Bitmap(480, 90, PixelFormat.Format32bppArgb))
+            using (var expected = new Bitmap(480, 90, PixelFormat.Format32bppArgb))
+            {
+                var background = transparent ? Color.Transparent : Color.White;
+                using (var g = Graphics.FromImage(src)) g.Clear(background);
+                using (var g = Graphics.FromImage(expected))
+                using (var font = new Font("Arial", 20, FontStyle.Regular, GraphicsUnit.Pixel))
+                using (var format = new StringFormat(StringFormatFlags.NoClip | StringFormatFlags.NoWrap))
+                {
+                    g.Clear(background);
+                    g.TextRenderingHint = transparent ? System.Drawing.Text.TextRenderingHint.AntiAliasGridFit : System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+                    g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                    g.DrawString("Chữ bị mờ - Lỗi không thể cho ý kiến", font, Brushes.Red, new RectangleF(16, 16, 448, 58), format);
+                }
+                var doc = new Document(src);
+                doc.Items.Add(new Ann { Kind = AnnKind.Text, P1 = new PointF(10, 10), P2 = new PointF(470, 80), FontName = "Arial", FontSize = 20, TextColor = Color.Red, Text = "Chữ bị mờ - Lỗi không thể cho ý kiến" });
+                try
+                {
+                    using (var actual = doc.Render())
+                    {
+                        for (int y = 0; y < actual.Height; y++)
+                            for (int x = 0; x < actual.Width; x++)
+                            {
+                                var a = actual.GetPixel(x, y); var e = expected.GetPixel(x, y);
+                                if (a.A != e.A || (a.A > 0 && a.ToArgb() != e.ToArgb()))
+                                    return (transparent ? "transparent" : "opaque") + " text differs from native hinted raster at " + x + "," + y;
+                            }
+                        using (var png = new MemoryStream())
+                        {
+                            actual.Save(png, ImageFormat.Png); png.Position = 0;
+                            using (var saved = new Bitmap(png))
+                                for (int y = 0; y < actual.Height; y++)
+                                    for (int x = 0; x < actual.Width; x++)
+                                        if (saved.GetPixel(x, y).ToArgb() != actual.GetPixel(x, y).ToArgb()) return "PNG altered annotation pixels";
+                        }
+                    }
+                }
+                finally { doc.Base.Dispose(); }
+            }
+            return null;
+        }
+
+        internal static string ToolbarIconRaster()
+        {
+            string[] names = { "select", "arrow", "line", "shape", "callout", "text", "step", "stamp", "pen", "highlighter", "fill", "blur", "magnify", "spotlight", "eraser", "crop", "copy", "paste", "save", "share", "settings", "undo", "redo" };
+            foreach (string name in names)
+                foreach (int size in new[] { 16, 20, 24, 30, 32, 36, 40, 48, 64 })
+                    foreach (bool light in new[] { false, true })
+                    {
+                        var icon = Icons.Get(name, size, light);
+                        if (icon.Width != size || icon.Height != size) return name + " has the wrong size";
+                        var ink = light ? Theme.Text : Icons.Ink;
+                        int visible = 0;
+                        for (int y = 0; y < size; y++)
+                            for (int x = 0; x < size; x++)
+                            {
+                                var pixel = icon.GetPixel(x, y);
+                                if (pixel.A == 0) continue;
+                                visible++;
+                                if (Math.Abs(pixel.R - ink.R) * pixel.A > 510 || Math.Abs(pixel.G - ink.G) * pixel.A > 510 || Math.Abs(pixel.B - ink.B) * pixel.A > 510)
+                                    return name + " has a non-neutral edge at " + size + " px";
+                            }
+                        if (visible < size) return name + " is empty";
+                        if (icon.GetPixel(0, 0).A != 0 || icon.GetPixel(size - 1, size - 1).A != 0) return name + " has an opaque background";
+                        if (!object.ReferenceEquals(icon, Icons.Get(name, size, light))) return name + " is not cached";
+                    }
+            using (var actual = new Bitmap(64, 66))
+            using (var expected = new Bitmap(64, 66))
+            using (var font = new Font("Segoe UI", 9f))
+            {
+                using (var g = Graphics.FromImage(actual))
+                {
+                    g.Clear(Theme.Ribbon);
+                    var button = new RBtn("Save\nAs", "save", BtnStyle.Big, null) { Bounds = new Rectangle(0, 0, 64, 66) };
+                    button.Paint(g, 1f, false, false);
+                }
+                using (var g = Graphics.FromImage(expected))
+                {
+                    g.Clear(Theme.Ribbon);
+                    TextRenderer.DrawText(g, "Save\nAs", font, new Rectangle(0, 34, 64, 32), Theme.Text,
+                        TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.WordBreak);
+                }
+                for (int y = 34; y < 66; y++)
+                    for (int x = 0; x < 64; x++)
+                        if (actual.GetPixel(x, y).ToArgb() != expected.GetPixel(x, y).ToArgb()) return "large Save As label does not fit below its 32px icon";
+            }
+            return null;
+        }
+
         public static int Run(string logPath)
         {
             string tmp = Path.Combine(Path.GetTempPath(), "rxcapture_selftest");
@@ -191,6 +283,8 @@ namespace RXCapture
                 }
                 return null;
             });
+
+            Check("small annotation text uses screen hinting on opaque backgrounds and preserves transparent edges", AnnotationTextRaster);
 
             Check("export formats (png jpg bmp gif tif pdf)", delegate
             {
@@ -758,6 +852,8 @@ namespace RXCapture
                 log.AppendLine("  hotkeys that failed to register: [" + string.Join(", ", failed2.ToArray()) + "]");
                 return null;
             });
+
+            Check("toolbar icons stay neutral and retain transparent padding at every UI scale", ToolbarIconRaster);
 
             Check("all icons draw", delegate
             {

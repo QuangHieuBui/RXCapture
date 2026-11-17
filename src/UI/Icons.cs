@@ -6,7 +6,7 @@ using System.Drawing.Text;
 
 namespace RXCapture
 {
-    /// <summary>All toolbar / ribbon icons are drawn with GDI+ on a 24x24 grid, so they stay sharp at any DPI.</summary>
+    /// <summary>Cached Fluent toolbar icons, with GDI+ fallbacks for application-specific symbols and stamps.</summary>
     public static class Icons
     {
         public static readonly Color Ink = Color.FromArgb(55, 65, 81);
@@ -24,6 +24,8 @@ namespace RXCapture
             string key = name + "|" + size + "|" + light;
             Bitmap b;
             if (cache.TryGetValue(key, out b)) return b;
+            b = FluentIcons.Create(name, size, light);
+            if (b != null) { cache[key] = b; return b; }
             b = new Bitmap(size, size, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
             using (var g = Graphics.FromImage(b))
             {

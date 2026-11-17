@@ -30,6 +30,9 @@ $args = @('/nologo', '/target:winexe', '/optimize+', '/debug:pdbonly', '/codepag
           "/out:$out\RXCapture.exe", "/win32manifest:$root\res\app.manifest", "/win32icon:$root\res\app.ico")
 $args += $refs | ForEach-Object { "/r:$_" }
 $args += Get-ChildItem "$root\res\fonts" -Filter *.ttf | ForEach-Object { "/resource:$($_.FullName),$($_.Name)" }
+$args += Get-ChildItem "$root\res\icons" -Filter fluent-*.png | ForEach-Object { "/resource:$($_.FullName),$($_.Name)" }
+$args += "/resource:$root\res\icons\fluent-names.txt,fluent-names.txt"
+$args += "/resource:$root\res\icons\LICENSE-Fluent.txt,LICENSE-Fluent.txt"
 $args += $src
 $args += $verInfo
 

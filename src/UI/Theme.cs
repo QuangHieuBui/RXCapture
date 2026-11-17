@@ -113,6 +113,7 @@ namespace RXCapture
         public static ContextMenuStrip Menu()
         {
             var m = new ContextMenuStrip();
+            m.Font = new Font("Segoe UI", 9f);
             m.Renderer = new DarkRenderer();
             m.ShowImageMargin = true;
             m.BackColor = Color.FromArgb(37, 37, 38);
@@ -242,7 +243,7 @@ namespace RXCapture
         {
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
-            Font = new Font("Roboto", 9.75f);
+            Font = new Font("Segoe UI", 9f);
             BackColor = Theme.Ribbon;
             ForeColor = Theme.Text;
             FormBorderStyle = FormBorderStyle.FixedDialog;

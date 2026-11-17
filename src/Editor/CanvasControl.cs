@@ -478,6 +478,7 @@ namespace RXCapture
                 g.SetClip(vis);
                 g.TranslateTransform(dest.X, dest.Y);
                 g.ScaleTransform(Zoom, Zoom);
+                g.TextRenderingHint = hasAlpha ? System.Drawing.Text.TextRenderingHint.AntiAliasGridFit : System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
                 for (int i = viewBaked; i < Doc.Items.Count; i++)
                 {
                     try { Doc.Items[i].Draw(g, view); }

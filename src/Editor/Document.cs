@@ -128,6 +128,9 @@ namespace RXCapture
             using (var g = Graphics.FromImage(target))
             {
                 g.SmoothingMode = SmoothingMode.AntiAlias;
+                // ClearType needs an opaque background; keep grayscale edges for transparent exports.
+                if (Items.Skip(from).Take(to - from).Any(a => a.Kind == AnnKind.Text || a.Kind == AnnKind.Callout || a.Kind == AnnKind.Step))
+                    g.TextRenderingHint = Effects.HasTransparency(target) ? System.Drawing.Text.TextRenderingHint.AntiAliasGridFit : System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
                 for (int i = from; i < to; i++)
                 {
                     var a = Items[i];
