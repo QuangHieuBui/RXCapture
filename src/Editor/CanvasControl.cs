@@ -38,7 +38,6 @@ namespace RXCapture
         bool viewDirty = true;
         int liveFrom = -1;
         bool hasAlpha;
-        Bitmap alphaCheckedFor;
         static Bitmap checkTile;
 
         // interaction state
@@ -256,7 +255,7 @@ namespace RXCapture
                 view = nv;
             }
             viewBaked = baked;
-            if (!ReferenceEquals(alphaCheckedFor, Doc.Base)) { hasAlpha = Effects.HasTransparency(Doc.Base); alphaCheckedFor = Doc.Base; }
+            hasAlpha = Doc.BaseHasTransparency;
             viewVersion++; viewDirty = false;
         }
 
@@ -1211,7 +1210,7 @@ namespace RXCapture
                 using (var b = new SolidBrush(Color.Transparent)) g.FillEllipse(b, ip.X - EraserSize / 2f, ip.Y - EraserSize / 2f, EraserSize, EraserSize);
             }
             lastImg = ip;
-            alphaCheckedFor = null;
+            Doc.InvalidateBaseTransparency();
             below = null; viewDirty = true; Invalidate();
         }
 

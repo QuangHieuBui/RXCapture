@@ -134,6 +134,76 @@ namespace RXCapture
             return null;
         }
 
+        internal static string AnnotationRedrawAllocations()
+        {
+            using (var source = new Bitmap(2048, 1024, PixelFormat.Format32bppArgb))
+            using (var target = new Bitmap(2048, 1024, PixelFormat.Format32bppArgb))
+            {
+                using (var g = Graphics.FromImage(source)) g.Clear(Color.White);
+                using (var g = Graphics.FromImage(target)) g.Clear(Color.White);
+                var doc = new Document(source);
+                var text = new Ann { Kind = AnnKind.Text, P1 = new PointF(20, 20), P2 = new PointF(400, 90), Text = "Move this comment" };
+                doc.Items.Add(text);
+                try
+                {
+                    doc.DrawItems(target, 0, -1); // warm opacity and font caches before measuring redraws
+                    AppDomain.MonitoringIsEnabled = true;
+                    long before = AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize;
+                    for (int i = 0; i < 5; i++) { text.Move(1, 0); doc.DrawItems(target, 0, -1); }
+                    long allocated = AppDomain.CurrentDomain.MonitoringTotalAllocatedMemorySize - before;
+                    if (allocated >= 4 * 1024 * 1024) return "five annotation redraws allocated " + allocated + " bytes (limit 4 MiB)";
+                }
+                finally { doc.Base.Dispose(); }
+            }
+            return null;
+        }
+
+        internal static string AnnotationOpacityChanges()
+        {
+            using (var source = new Bitmap(64, 64))
+            using (var transparent = new Bitmap(64, 64))
+            using (var canvas = new CanvasControl())
+            {
+                using (var g = Graphics.FromImage(source)) g.Clear(Color.White);
+                var doc = new Document(source);
+                var originalBase = doc.Base;
+                Bitmap replacementBase = null;
+                try
+                {
+                    if (doc.BaseHasTransparency) return "opaque base reported as transparent";
+                    doc.ReplaceBase(transparent, Point.Empty); replacementBase = doc.Base;
+                    if (!doc.BaseHasTransparency) return "replacement transparency was not detected";
+                    doc.Undo(); if (doc.BaseHasTransparency) return "undo did not restore opaque status";
+                    doc.Redo(); if (!doc.BaseHasTransparency) return "redo did not restore transparent status";
+                    doc.Undo();
+                    if (doc.BaseHasTransparency) return "second undo did not restore opaque status";
+                    canvas.SetDocument(doc);
+                    typeof(CanvasControl).GetMethod("EraseTo", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                        .Invoke(canvas, new object[] { new PointF(32, 32) });
+                    if (!doc.BaseHasTransparency) return "in-place erasing did not invalidate opacity";
+                }
+                finally { originalBase.Dispose(); if (replacementBase != null) replacementBase.Dispose(); }
+            }
+            return null;
+        }
+
+        internal static string ToolbarIconLocales()
+        {
+            var settings = AppSettings.Current;
+            string original = settings.Language;
+            try
+            {
+                foreach (string language in new[] { "en", "vi" })
+                {
+                    settings.Language = language; Loc.Init();
+                    string error = ToolbarIconRaster();
+                    if (error != null) return language + ": " + error;
+                }
+                return null;
+            }
+            finally { settings.Language = original; Loc.Init(); }
+        }
+
         internal static string ToolbarIconRaster()
         {
             string[] names = { "select", "arrow", "line", "shape", "callout", "text", "step", "stamp", "pen", "highlighter", "fill", "blur", "magnify", "spotlight", "eraser", "crop", "copy", "paste", "save", "share", "settings", "undo", "redo" };
@@ -171,7 +241,7 @@ namespace RXCapture
                 using (var g = Graphics.FromImage(expected))
                 {
                     g.Clear(Theme.Ribbon);
-                    TextRenderer.DrawText(g, "Save\nAs", font, new Rectangle(0, 34, 64, 32), Theme.Text,
+                    TextRenderer.DrawText(g, Loc.T("Save\nAs"), font, new Rectangle(0, 34, 64, 32), Theme.Text,
                         TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix | TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.WordBreak);
                 }
                 for (int y = 34; y < 66; y++)
@@ -285,6 +355,8 @@ namespace RXCapture
             });
 
             Check("small annotation text uses screen hinting on opaque backgrounds and preserves transparent edges", AnnotationTextRaster);
+            Check("moving annotations does not allocate a full bitmap for each redraw", AnnotationRedrawAllocations);
+            Check("base opacity follows replacement, undo/redo and in-place erasing", AnnotationOpacityChanges);
 
             Check("export formats (png jpg bmp gif tif pdf)", delegate
             {
@@ -853,7 +925,7 @@ namespace RXCapture
                 return null;
             });
 
-            Check("toolbar icons stay neutral and retain transparent padding at every UI scale", ToolbarIconRaster);
+            Check("toolbar icons and labels render correctly in English and Vietnamese", ToolbarIconLocales);
 
             Check("all icons draw", delegate
             {

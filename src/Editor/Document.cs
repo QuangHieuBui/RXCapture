@@ -20,6 +20,24 @@ namespace RXCapture
         public string ExportPath;       // last "Save As" target
         public bool Dirty;
         public DateTime Created = DateTime.Now;
+        Bitmap alphaCheckedFor;
+        bool baseHasAlpha;
+
+        /// <summary>Cached while the base is unchanged; erasing explicitly invalidates it.</summary>
+        internal bool BaseHasTransparency
+        {
+            get
+            {
+                if (!ReferenceEquals(alphaCheckedFor, Base))
+                {
+                    baseHasAlpha = Effects.HasTransparency(Base);
+                    alphaCheckedFor = Base;
+                }
+                return baseHasAlpha;
+            }
+        }
+
+        internal void InvalidateBaseTransparency() { alphaCheckedFor = null; }
 
         class State { public Bitmap Base; public List<Ann> Items; }
         readonly List<State> undo = new List<State>();
@@ -130,7 +148,7 @@ namespace RXCapture
                 g.SmoothingMode = SmoothingMode.AntiAlias;
                 // ClearType needs an opaque background; keep grayscale edges for transparent exports.
                 if (Items.Skip(from).Take(to - from).Any(a => a.Kind == AnnKind.Text || a.Kind == AnnKind.Callout || a.Kind == AnnKind.Step))
-                    g.TextRenderingHint = Effects.HasTransparency(target) ? System.Drawing.Text.TextRenderingHint.AntiAliasGridFit : System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+                    g.TextRenderingHint = BaseHasTransparency ? System.Drawing.Text.TextRenderingHint.AntiAliasGridFit : System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
                 for (int i = from; i < to; i++)
                 {
                     var a = Items[i];

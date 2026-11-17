@@ -86,6 +86,17 @@ RXCapture.exe --grab x,y,w,h out.png  # chụp một vùng, không giao diện
 ## Lịch sử phiên bản
 Mỗi lần đóng gói lại file cài đặt, thêm một mục ở đầu danh sách này (số phiên bản lấy từ `build-setup.ps1 -Version`).
 
+### 1.0.9
+**Giao diện**
+- Bộ icon Fluent Regular thống nhất cho toolbar, menu và các lệnh thông dụng; công cụ đang chọn có nền và viền xanh.
+- Chữ giao diện dùng Segoe UI Regular 9 pt; giữ nguyên bố cục và nhóm công cụ.
+- Chữ chú thích dùng ClearType trên nền đặc, giữ khử răng cưa grayscale cho ảnh có vùng trong suốt.
+
+**Sửa lỗi**
+- Kéo chữ/callout trên ảnh lớn không còn quét và sao chép toàn bộ bitmap mỗi lần vẽ. Preview và export dùng chung cache opacity, cập nhật khi thay ảnh nền, undo/redo hoặc tẩy.
+- Kiểm tra raster toolbar chạy đúng với cả tiếng Anh và tiếng Việt, không còn báo lỗi giả vì nhãn được dịch.
+- Nhãn hai dòng như Save As hiển thị đủ bên dưới icon lớn.
+
 ### 1.0.8
 **Mới**
 - Xem video trong Editor mượt hơn: việc giải mã video chạy trên một luồng riêng (giải mã trước vài khung hình), luồng giao diện chỉ vẽ nên không còn giật khi Editor đang bận.
