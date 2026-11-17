@@ -1,0 +1,6 @@
+RXCapture 1.0.9
+Built:   2026-11-18 00:37
+Source:  git 776136f490dc9c8ef99df5014378250c84376f6a
+SHA-256: 94B004CF202D2BB69682603D627B67E190B860902E131C3DA4EC411F53CC9F89  (RXCapture-Setup-1.0.9.exe)
+Validation: 54/54 self-tests; 43/43 file/UI tests on the signed portable build.
+Packaging: signed and timestamped app/installer; embedded payload matches portable ZIP.
